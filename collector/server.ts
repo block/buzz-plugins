@@ -4,8 +4,24 @@ import { appendFile, readFile, stat } from 'node:fs/promises';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { cli } from '../indexer/args.ts';
+import { realDeps } from '../indexer/net.ts';
+import type { Deps } from '../indexer/net.ts';
+import { parsePending } from '../indexer/pending.ts';
 import { isKey } from '../indexer/schema.ts';
+import { validateSource } from '../indexer/sources.ts';
 import { COMMIT_RE, PLUGIN_ID_RE } from '../indexer/types.ts';
+import {
+  MAX_PENDING_SOURCES,
+  MAX_SUBMISSIONS_PER_IP_PER_DAY,
+  checkSubmission,
+  defaultPendingPath,
+  pendingRow,
+  readDenylist,
+  sourceFromKey,
+  summarize,
+  validateSubmission,
+} from './submit.ts';
+import type { CheckResult } from './submit.ts';
 
 export const MAX_BODY_BYTES = 1024;
 export const MAX_PINGS_PER_IP_PER_DAY = 30;
@@ -23,6 +39,10 @@ export interface CollectorOptions {
   allowTimeOverride?: boolean;
   maxPerDay?: number;
   maxVotesPerDay?: number;
+  maxSubmissionsPerDay?: number;
+  pendingPath?: string;
+  denylistPath?: string;
+  deps?: Deps;
 }
 
 export function defaultVotesPath(storePath: string): string {
@@ -44,21 +64,22 @@ export function ipBucket(address: string): string {
   return `${expandIPv6(address.split('%')[0]!.toLowerCase()).slice(0, 4).join(':')}::/64`;
 }
 
-type Validated = { ok: true; key: string; id: string; commit: string; installer: string } | { ok: false };
+type Validated = { ok: true; key: string; id: string; commit: string; installer: string; ref?: string } | { ok: false };
 
 export function validatePing(body: unknown): Validated {
   if (typeof body !== 'object' || body === null || Array.isArray(body)) return { ok: false };
-  const { key, id, commit, installer, client } = body as Record<string, unknown>;
+  const { key, id, commit, installer, client, ref } = body as Record<string, unknown>;
   if (
     !isKey(key) || key.length > 300 ||
     typeof id !== 'string' || !PLUGIN_ID_RE.test(id) ||
     typeof commit !== 'string' || !COMMIT_RE.test(commit) ||
     typeof installer !== 'string' || !INSTALLER_RE.test(installer) ||
-    typeof client !== 'string' || !CLIENT_RE.test(client)
+    typeof client !== 'string' || !CLIENT_RE.test(client) ||
+    (ref !== undefined && (typeof ref !== 'string' || 'error' in validateSource({ owner: 'o', repo: 'r', ref })))
   ) {
     return { ok: false };
   }
-  return { ok: true, key, id, commit, installer };
+  return ref === undefined ? { ok: true, key, id, commit, installer } : { ok: true, key, id, commit, installer, ref };
 }
 
 type ValidatedVote = { ok: true; key: string; id: string; voter: string; vote: 0 | 1 } | { ok: false };
@@ -133,6 +154,12 @@ export function createCollector(options: CollectorOptions): Server {
   };
   const countPing = dailyCounter();
   const countVote = dailyCounter();
+  const countSubmission = dailyCounter();
+  const maxSubmissionsPerDay = options.maxSubmissionsPerDay ?? MAX_SUBMISSIONS_PER_IP_PER_DAY;
+  const pendingPath = options.pendingPath ?? defaultPendingPath(options.storePath);
+  mkdirSync(dirname(pendingPath), { recursive: true });
+  const baseDeps = options.deps ?? realDeps();
+  const deps: Deps = { ...baseDeps, sleep: (ms) => baseDeps.sleep(Math.min(ms, 3000)) };
 
   const installerId = (key: string, installer: string) => `${key}\n${installer}`;
   let installers: Promise<Set<string>> | null = null;
@@ -169,6 +196,19 @@ export function createCollector(options: CollectorOptions): Server {
     } catch {
       return new Set();
     }
+  };
+
+  let pending: Promise<Map<string, string>> | null = null;
+  const pendingKeys = (): Promise<Map<string, string>> => {
+    pending ??= readFile(pendingPath, 'utf8')
+      .catch(() => '')
+      .then((text) => new Map(parsePending(text).map((row) => [row.key.toLowerCase(), row.id])));
+    return pending;
+  };
+  const isListed = async (key: string): Promise<boolean> => {
+    const lower = key.toLowerCase();
+    for (const k of await knownKeys()) if (k.toLowerCase() === lower) return true;
+    return false;
   };
 
   let writes: Promise<unknown> = Promise.resolve();
@@ -236,12 +276,82 @@ export function createCollector(options: CollectorOptions): Server {
     }
   };
 
+  const overSubmissionBudget = (req: IncomingMessage, res: ServerResponse): boolean => {
+    const n = countSubmission(clientBucket(req), now());
+    if (n !== null && n <= maxSubmissionsPerDay) return false;
+    send(res, 429, { error: 'rate limited' }, { 'retry-after': '3600' });
+    return true;
+  };
+
+  const queue = async (res: ServerResponse, checked: Extract<CheckResult, { ok: true }>, at: number, rejectStatus: 404 | 422): Promise<'queued' | 'listed' | null> => {
+    const { listing } = checked;
+    if ((await readDenylist(options.denylistPath)).has(listing.key.toLowerCase())) {
+      send(res, rejectStatus, { error: rejectStatus === 404 ? 'unknown key' : 'not listable', reason: 'denylisted', detail: `${listing.key} is in the denylist` });
+      return null;
+    }
+    if (await isListed(listing.key)) return 'listed';
+    const keys = await pendingKeys();
+    const lower = listing.key.toLowerCase();
+    if (keys.has(lower)) return 'queued';
+    if (keys.size >= MAX_PENDING_SOURCES) {
+      send(res, 503, { error: 'queue full' }, { 'retry-after': '3600' });
+      return null;
+    }
+    keys.set(lower, listing.id);
+    if (!(await store(res, pendingPath, pendingRow(listing, at)))) {
+      keys.delete(lower);
+      return null;
+    }
+    return 'queued';
+  };
+
+  const sendCheckFailure = (res: ServerResponse, failure: Extract<CheckResult, { ok: false }>, status: number) =>
+    failure.transient
+      ? send(res, 503, { error: 'check unavailable', reason: failure.reason, detail: failure.detail }, { 'retry-after': '600' })
+      : send(res, status, { error: status === 404 ? 'unknown key' : 'not listable', reason: failure.reason, detail: failure.detail });
+
+  const postSource = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
+    const request = await readRequest(req, res, countSubmission, maxSubmissionsPerDay);
+    if (!request) return;
+    const body = validateSubmission(request.body);
+    if (!body.ok) return send(res, 400, { error: 'malformed body' });
+    const checked = await checkSubmission(deps, body.submission, now);
+    if (!checked.ok) return sendCheckFailure(res, checked, 422);
+    const status = await queue(res, checked, request.at, 422);
+    if (status) send(res, 200, { status, listing: summarize(checked.listing) });
+  };
+
+  const admitUnlisted = async (req: IncomingMessage, res: ServerResponse, ping: Extract<Validated, { ok: true }>, at: number): Promise<boolean> => {
+    const queued = (await pendingKeys()).get(ping.key.toLowerCase());
+    if (queued !== undefined) {
+      if (queued === ping.id) return true;
+      send(res, 404, { error: 'unknown key', reason: 'id-mismatch', detail: 'the queued source has a different manifest id' });
+      return false;
+    }
+    if (overSubmissionBudget(req, res)) return false;
+    const source = sourceFromKey(ping.key);
+    if (!source) {
+      send(res, 404, { error: 'unknown key' });
+      return false;
+    }
+    const checked = await checkSubmission(deps, { repository: `${source.owner}/${source.repo}`, ref: ping.ref, path: source.path }, now);
+    if (!checked.ok) {
+      sendCheckFailure(res, checked, 404);
+      return false;
+    }
+    if (checked.listing.key !== ping.key || checked.listing.id !== ping.id) {
+      send(res, 404, { error: 'unknown key', reason: 'id-mismatch', detail: `the source's manifest id is ${checked.listing.id}` });
+      return false;
+    }
+    return (await queue(res, checked, at, 404)) !== null;
+  };
+
   const postInstall = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     const request = await readRequest(req, res, countPing, maxPerDay);
     if (!request) return;
     const ping = validatePing(request.body);
     if (!ping.ok) return send(res, 400, { error: 'malformed body' });
-    if (!(await knownKeys()).has(ping.key)) return send(res, 404, { error: 'unknown key' });
+    if (!(await knownKeys()).has(ping.key) && !(await admitUnlisted(req, res, ping, request.at))) return;
     const row = { ts: new Date(request.at).toISOString(), key: ping.key, id: ping.id, commit: ping.commit, installer: ping.installer };
     if (!(await store(res, options.storePath, row))) return;
     if (installers) (await installers).add(installerId(ping.key, ping.installer));
@@ -277,6 +387,10 @@ export function createCollector(options: CollectorOptions): Server {
     const handle = async () => {
       if (path === '/v1/installs') {
         if (req.method === 'POST') return postInstall(req, res);
+        return send(res, 405, { error: 'method not allowed' }, { allow: 'POST' });
+      }
+      if (path === '/v1/sources') {
+        if (req.method === 'POST') return postSource(req, res);
         return send(res, 405, { error: 'method not allowed' }, { allow: 'POST' });
       }
       if (path === '/v1/votes') {
@@ -315,11 +429,13 @@ function main(): void {
     store: { type: 'string' },
     votes: { type: 'string' },
     index: { type: 'string' },
+    pending: { type: 'string' },
+    denylist: { type: 'string' },
     'trust-proxy': { type: 'boolean' },
     'allow-time-override': { type: 'boolean' },
   });
   if (!values.store || !values.index) {
-    console.error('usage: server.ts --port 8787 --store <installs.jsonl> [--votes <votes.jsonl>] --index <index.json> [--host 127.0.0.1] [--trust-proxy]');
+    console.error('usage: server.ts --port 8787 --store <installs.jsonl> [--votes <votes.jsonl>] [--pending <pending-sources.jsonl>] [--denylist denylist.txt] --index <index.json> [--host 127.0.0.1] [--trust-proxy]');
     process.exit(2);
   }
   const host = values.host ?? '127.0.0.1';
@@ -331,6 +447,8 @@ function main(): void {
     storePath: values.store,
     votesPath: values.votes,
     indexPath: values.index,
+    pendingPath: values.pending,
+    denylistPath: values.denylist,
     trustProxy: values['trust-proxy'],
     allowTimeOverride: values['allow-time-override'],
   });

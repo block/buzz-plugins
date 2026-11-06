@@ -12,8 +12,9 @@ sources.txt           seed sources, one per line: <repository> <ref> [path]
 denylist.txt          listing keys never shown, one per line
 fixtures/index.json   a sample index the plugin and tests use
 indexer/              crawl, publicity check, audit, listing metadata, build index.json
-collector/            install ping and upvote HTTP server, stores, ranking job
+collector/            install ping, upvote and source submission HTTP server, stores, ranking job
 marketplace/          the Community Marketplace Buzz plugin
+template/             a minimal plugin for authors to copy
 ```
 
 ## Listing key
@@ -28,6 +29,10 @@ A source counts as publicly available only when all of these succeed **without c
 3. `https://raw.githubusercontent.com/<owner>/<repo>/<commit>/<path>/manifest.json` and `.../plugin.js` both return 200. The manifest has to parse, and its `id` must match `^[a-z][a-z0-9.-]{0,79}$`.
 
 If any step fails, the source isn't listed and the reason is recorded in the crawl report, which is never published.
+
+## Sources
+
+The crawl reads `sources.txt`, then the collector's pending store (`pending-sources.jsonl`, see [Source submission API](#source-submission-api-collector)). Pending sources whose key is already in `sources.txt`, appears earlier in the pending store, or is in `denylist.txt` are skipped (keys compare case-insensitively). A pending source that fails the publicity check is reported like any other source and is checked again on the next crawl.
 
 ## Author metadata (optional)
 
@@ -114,7 +119,11 @@ A listing whose tier is `high`, or that has any flag, gets `audit.cleared: false
 ```
 
 - `installer` is `sha256(localSalt + ":" + id)` in hex. `localSalt` is 32 random bytes kept only on the device. The collector never sees anything that identifies a person.
-- The response is `202 {}` on accept. A malformed body gets `400`, an unknown key `404` (only keys in the current index are accepted), and more than 30 pings per IP per UTC day `429`. IPs are only counted in memory for the rate limit and are never stored.
+- The response is `202 {}` on accept. A malformed body gets `400` and more than 30 pings per IP per UTC day `429`. IPs are only counted in memory for the rate limit and are never stored.
+- A key that isn't in the current index is accepted only when the collector can list it, so a plugin is listed on its first install:
+  - If the key is already in the pending store with the same manifest `id`, the ping is accepted.
+  - Otherwise the collector runs the same check as `POST /v1/sources` on the key's repository and path, at the ping's optional `ref` (a branch or tag name) or the default branch. The check spends the IP's submission budget. If it passes and the manifest `id` matches the ping's, the source goes into the pending store and the ping is stored.
+  - Otherwise the ping gets `404 {error, reason, detail}`, or `503` when GitHub is rate limiting or unreachable, and nothing is stored.
 - Storage is append-only JSONL with these fields: `{ts, key, id, commit, installer}`.
 - Dedup: one row per `(key, installer)` counts toward `allTime`. For windows, count distinct installers whose first ping for that key falls in the window.
 
@@ -130,6 +139,23 @@ A listing whose tier is `high`, or that has any flag, gets `audit.cleared: false
 - The response is `202 {}` on accept. A malformed body gets `400`, an unknown key `404`, a voter with no install ping for that key `403`, and more than 60 votes per IP per UTC day `429`. Votes have their own daily budget, separate from install pings.
 - Storage is append-only JSONL next to the install store (`installs.jsonl` → `installs.votes.jsonl`) with these fields: `{ts, key, id, voter, vote}`.
 - The latest row per `(key, voter)` wins. `upvotes` counts voters whose latest vote is `1` and who have an install ping for that key, so it never exceeds `installs.allTime`.
+
+## Source submission API (collector)
+
+`POST /v1/sources` with JSON and a 1 KiB limit:
+
+```json
+{ "repository": "owner/repo", "ref": "main", "path": "plugins/notes" }
+```
+
+- `repository` is `owner/repo` or `https://github.com/owner/repo`. `ref` is optional and defaults to the repository's default branch. `path` is optional and defaults to the root.
+- The collector runs the same credential-free publicity check, manifest check and `buzz-listing.yaml` validation as the crawl.
+- If they pass, the response is `200 {status, listing}`. `listing` is a summary of the would-be listing: `key`, `slug`, `id`, `name`, `tagline`, `category`, `official`, `source` and `audit` (`tier`, flag codes, `cleared`). `status` is one of:
+  - `queued`: the source was added to the pending store, or was already in it. The next crawl lists it.
+  - `listed`: the key is already in the index. Nothing is stored.
+- If a check fails, the response is `422 {error, reason, detail}` with a [reason code](#publicly-available). A denylisted key gets reason `denylisted`.
+- A malformed body gets `400`. More than 20 submissions per IP per UTC day get `429`; this budget is separate from pings and votes. If GitHub is rate limiting or unreachable, the response is `503` with `retry-after`. When the pending store holds 5000 sources, new ones get `503`.
+- The pending store is append-only JSONL next to the install store (`pending-sources.jsonl`) with these fields: `{ts, key, id, repository, ref, path, commit}`. Nothing about the submitter is stored.
 
 `GET /v1/index.json` serves the newest built index. CORS is open for GET.
 
@@ -154,4 +180,6 @@ A listing whose tier is `high`, or that has any flag, gets `audit.cleared: false
   - The plugin sends a ping only after an `installed` result, only for a key that's in the index, and only after its own `GET https://api.github.com/repos/<owner>/<repo>` returns `private: false`. The ping is fire-and-forget and never changes the install result.
   - The listing page has an **Upvote** toggle. It's enabled only while the host reports the plugin `installed`, this device's install ping for that key was accepted, and sharing is on. It sends `POST /v1/votes` with the same hash as the install ping, updates the count at once, and reverts if the collector doesn't accept it. The device remembers its own upvotes so the toggle survives a reload.
   - A settings toggle, "Share anonymous install counts and upvotes", is on by default and stored in plugin storage or localStorage. While it's off, no ping or vote is sent.
+  - The header has **Add your plugin**. It opens a dialog that states the requirements: a built `manifest.json` and `plugin.js` committed on a public branch or tag, and an optional `buzz-listing.yaml`. The author enters `owner/repo`, `owner/repo/path` or a github.com link, plus an optional branch or tag.
+  - The dialog first checks the source itself, without credentials: `GET https://api.github.com/repos/<owner>/<repo>` must return `private: false`, then `manifest.json` must parse with a valid `id` and `name`, and `plugin.js` must exist at `raw.githubusercontent.com` on that ref. It shows what it found, or why the source can't be listed, then sends `POST /v1/sources` and shows the index's answer.
 - None of the plugin's text, or this repository's, names other products or sites as a design source.

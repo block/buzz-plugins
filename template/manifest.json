@@ -1,0 +1,10 @@
+{
+  "id": "com.example.my-plugin",
+  "name": "My plugin",
+  "apiVersion": 1,
+  "description": "A starting point for a Buzz plugin.",
+  "discovery": {
+    "category": "productivity",
+    "tags": ["Example"]
+  }
+}

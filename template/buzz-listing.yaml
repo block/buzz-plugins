@@ -1,0 +1,11 @@
+tagline: A starting point for a Buzz plugin
+description: |
+  Adds a page with a counter. Replace this with what your plugin does,
+  who it's for and anything people should know before they add it.
+category: productivity
+tags: [example]
+setup:
+  - title: Open the page
+    detail: Choose My plugin in the sidebar.
+links:
+  docs: https://github.com/OWNER/REPO#readme

@@ -6,6 +6,8 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, test } from 'node:test';
+import type { Deps } from '../indexer/net.ts';
+import { mock } from '../indexer/testkit.ts';
 import { createCollector, defaultVotesPath, ipBucket, validatePing, validateVote } from './server.ts';
 
 const KEY = 'github.com/octo/plug';
@@ -32,7 +34,7 @@ const voteBody = (extra: Record<string, unknown> = {}) => ({
 const servers: Server[] = [];
 after(() => servers.forEach((s) => s.close()));
 
-async function start(options: { now?: () => number; trustProxy?: boolean; allowTimeOverride?: boolean; maxPerDay?: number; maxVotesPerDay?: number; keys?: string[]; seedStore?: string } = {}) {
+async function start(options: { now?: () => number; trustProxy?: boolean; allowTimeOverride?: boolean; maxPerDay?: number; maxVotesPerDay?: number; keys?: string[]; seedStore?: string; deps?: Deps; denylist?: string; maxSubmissionsPerDay?: number } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'collector-'));
   const storePath = join(dir, 'nested', 'installs.jsonl');
   const indexPath = join(dir, 'index.json');
@@ -43,7 +45,20 @@ async function start(options: { now?: () => number; trustProxy?: boolean; allowT
   const writeIndex = (keys: string[]) => writeFileSync(indexPath, JSON.stringify({ schemaVersion: 1, plugins: keys.map((key) => ({ key })) }));
   writeIndex(options.keys ?? [KEY, 'github.com/block/buzz-app/examples/plugins/counter']);
   const clock = { t: Date.parse('2026-11-05T12:00:00Z') };
-  const server = createCollector({ storePath, indexPath, now: options.now ?? (() => clock.t), trustProxy: options.trustProxy, allowTimeOverride: options.allowTimeOverride, maxPerDay: options.maxPerDay, maxVotesPerDay: options.maxVotesPerDay });
+  const denylistPath = join(dir, 'denylist.txt');
+  writeFileSync(denylistPath, options.denylist ?? '');
+  const server = createCollector({
+    storePath,
+    indexPath,
+    denylistPath,
+    deps: options.deps ?? mock({}).deps,
+    now: options.now ?? (() => clock.t),
+    trustProxy: options.trustProxy,
+    allowTimeOverride: options.allowTimeOverride,
+    maxPerDay: options.maxPerDay,
+    maxVotesPerDay: options.maxVotesPerDay,
+    maxSubmissionsPerDay: options.maxSubmissionsPerDay,
+  });
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
   servers.push(server);
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -54,7 +69,11 @@ async function start(options: { now?: () => number; trustProxy?: boolean; allowT
   const votes = () => (existsSync(votesPath) ? readFileSync(votesPath, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)) : []);
   const postVote = (body: unknown, headers: Record<string, string> = {}) =>
     fetch(`${base}/v1/votes`, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: typeof body === 'string' ? body : JSON.stringify(body) });
-  return { base, post, rows, clock, storePath, indexPath, writeIndex, votesPath, votes, postVote };
+  const pendingPath = join(dir, 'nested', 'pending-sources.jsonl');
+  const pending = () => (existsSync(pendingPath) ? readFileSync(pendingPath, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)) : []);
+  const submit = (body: unknown, headers: Record<string, string> = {}) =>
+    fetch(`${base}/v1/sources`, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: typeof body === 'string' ? body : JSON.stringify(body) });
+  return { base, post, rows, clock, storePath, indexPath, writeIndex, votesPath, votes, postVote, pendingPath, pending, submit };
 }
 
 test('a valid ping is accepted with 202 {} and stored with exactly ts, key, id, commit, installer', async () => {

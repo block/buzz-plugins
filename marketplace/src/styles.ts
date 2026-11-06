@@ -6,7 +6,8 @@ export const styles = `
 .bm-header { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-6); margin-bottom: var(--space-6); }
 .bm-title { margin: 0; font-size: var(--text-title); font-weight: var(--text-title--font-weight); letter-spacing: var(--text-title--letter-spacing); line-height: var(--text-title--line-height); }
 .bm-subtitle { margin: var(--space-2) 0 0; color: var(--text-subtle); font-size: var(--text-body-lg); line-height: var(--text-body-lg--line-height); }
-.bm-search { flex: 0 1 320px; display: flex; align-items: center; gap: var(--space-2); height: 40px; padding: 0 var(--space-3);
+.bm-header-actions { flex: 0 1 480px; display: flex; align-items: center; justify-content: flex-end; gap: var(--space-2); min-width: 0; }
+.bm-search { flex: 0 1 320px; min-width: 0; display: flex; align-items: center; gap: var(--space-2); height: 40px; padding: 0 var(--space-3);
   border-radius: var(--radius-pill); background: var(--surface-inset); border: 1px solid var(--border-standard); }
 .bm-search:focus-within { border-color: var(--border-focus); }
 .bm-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: inherit; font: inherit; font-size: var(--text-body); }
@@ -113,8 +114,24 @@ export const styles = `
 .bm-step[data-state="failed"] .bm-step-detail { color: var(--text-danger); }
 @keyframes bm-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .bm-step[data-state="active"] .bm-step-mark { animation: none; border-top-color: var(--border-focus); } }
+.bm-dialog-lede { margin: 0; font-size: var(--text-body); color: var(--text-subtle); }
+.bm-requirements { margin: calc(-1 * var(--space-2)) 0 0; padding-inline-start: var(--space-5); display: grid; gap: var(--space-1); font-size: var(--text-body-sm); color: var(--text-subtle); }
+.bm-requirements code, .bm-dialog-lede code { font-family: var(--font-mono); font-size: .92em; }
+.bm-form { display: grid; gap: var(--space-3); }
+.bm-field { display: grid; gap: var(--space-1); font-size: var(--text-body-sm); font-weight: var(--font-weight-semibold); }
+.bm-field input { box-sizing: border-box; height: 36px; padding: 0 var(--space-3); border-radius: var(--radius-control); border: 1px solid var(--border-standard);
+  background: var(--surface-inset); color: inherit; font: inherit; font-family: var(--font-mono); font-size: var(--text-body-sm); font-weight: normal; outline: 0; }
+.bm-field input:focus { border-color: var(--border-focus); }
+.bm-check { display: grid; gap: var(--space-2); font-size: var(--text-body-sm); min-height: var(--text-body-sm--line-height); }
+.bm-check p { margin: 0; color: var(--text-subtle); }
+.bm-check .bm-check-error { color: var(--text-danger); }
+.bm-check .bm-check-success { color: var(--text-success); }
+.bm-check-found { display: grid; gap: var(--space-1); padding: var(--space-3); border-radius: var(--radius-control); background: var(--surface-inset); min-width: 0; }
+.bm-check-found .bm-note { overflow-wrap: anywhere; }
+.bm-check-description { color: var(--text-subtle); }
 .bm-actions { display: flex; justify-content: flex-end; gap: var(--space-2); }
 @media (max-width: 900px) { .bm-detail { grid-template-columns: 1fr; } .bm-aside { position: static; } }
+@media (max-width: 720px) { .bm-header { flex-wrap: wrap; } .bm-header-actions { flex-basis: 100%; justify-content: flex-start; } }
 .bm-flags { gap: var(--space-2); }
 .bm-flag { display: grid; gap: var(--space-1); }
 .bm-flag code { justify-self: start; padding: 0 var(--space-2); border-radius: var(--radius-pill); background: color-mix(in srgb, var(--red-9) 16%, transparent); color: var(--text-danger); font-weight: var(--font-weight-semibold); }

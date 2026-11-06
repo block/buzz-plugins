@@ -9,15 +9,19 @@ Plugin source stays in its author's repository. The directory lists a plugin onc
 | Path | What it is |
 | --- | --- |
 | [`indexer/`](./indexer) | Crawls sources, checks they're public, audits access, and builds `index.json` |
-| [`collector/`](./collector) | Install ping and upvote server, plus the ranking job |
+| [`collector/`](./collector) | Install ping, upvote and source submission server, plus the ranking job |
 | [`marketplace/`](./marketplace) | The Community Marketplace Buzz plugin that browses the index |
+| [`template/`](./template) | A starter plugin for authors |
 | [`SPEC.md`](./SPEC.md) | The contract: listing keys, publicity check, audit, `index.json`, ping and vote APIs, ranking |
 
 ## Listing a plugin
 
-1. Commit a built `manifest.json` and `plugin.js` to a public GitHub repository, at the root or in a subfolder, on a branch or tag.
-2. Optionally add `buzz-listing.yaml` next to the manifest with a tagline, description, category, tags, demo media, setup steps and links.
-3. Add the source with `index add owner/repo [ref] [path]`, or install it once from the Community Marketplace.
+1. Start from [`template/`](./template), a minimal plugin with a build script and an example `buzz-listing.yaml`, or bring your own.
+2. Commit a built `manifest.json` and `plugin.js` to a public GitHub repository, at the root or in a subfolder, on a branch or tag.
+3. Optionally add `buzz-listing.yaml` next to the manifest with a tagline, description, category, tags, demo media, setup steps and links.
+4. In the Community Marketplace, choose **Add your plugin** and enter `owner/repo` or `owner/repo/path`, plus an optional branch or tag. It checks the source without credentials, then submits it with `POST /v1/sources`. The listing appears after the next index update.
+
+Maintainers can also add a source directly with `pnpm run add owner/repo [ref] [path]`, which appends it to `sources.txt`.
 
 Every listing is labelled as unreviewed community content. Buzz's own install review, which shows the requested access and the exact commit, is still the gate before anything runs.
 
@@ -33,6 +37,7 @@ Requires Node 24 and pnpm.
 pnpm install
 pnpm test
 cd marketplace && pnpm install && pnpm check
+cd ../template && pnpm install && pnpm build
 ```
 
 ## Project resources

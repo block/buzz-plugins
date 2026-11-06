@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path';
 import { cli } from './args.ts';
 import { buildListing } from './build.ts';
 import { realDeps } from './net.ts';
+import { mergePending } from './pending.ts';
 import type { Deps } from './net.ts';
 import type { ReasonCode } from './publicity.ts';
 import { listingKey, slugify } from './slug.ts';
@@ -124,17 +125,22 @@ async function main(): Promise<void> {
     sources: { type: 'string' },
     previous: { type: 'string' },
     cleared: { type: 'string' },
+    pending: { type: 'string' },
+    denylist: { type: 'string' },
     out: { type: 'string' },
     report: { type: 'string' },
   });
   if (!values.sources || !values.out || !values.report) {
-    console.error('usage: crawl.ts --sources <file> [--previous <index.json>] [--cleared <file>] --out <listings.json> --report <report.json>');
+    console.error('usage: crawl.ts --sources <file> [--pending <pending-sources.jsonl>] [--denylist <file>] [--previous <index.json>] [--cleared <file>] --out <listings.json> --report <report.json>');
     process.exit(2);
   }
   const clearedPath = values.cleared ?? join(dirname(values.sources), 'cleared.txt');
+  const denylistPath = values.denylist ?? join(dirname(values.sources), 'denylist.txt');
+  const readIfExists = (path: string | undefined) => (path && existsSync(path) ? readFileSync(path, 'utf8') : '');
+  const merged = mergePending(readFileSync(values.sources, 'utf8'), readIfExists(values.pending), readIfExists(denylistPath));
   const previous = values.previous && existsSync(values.previous) ? JSON.parse(readFileSync(values.previous, 'utf8')) : null;
   const { listings, report } = await crawl({
-    sourcesText: readFileSync(values.sources, 'utf8'),
+    sourcesText: merged.text,
     clearedText: existsSync(clearedPath) ? readFileSync(clearedPath, 'utf8') : '',
     previous,
     deps: realDeps(),
@@ -143,6 +149,7 @@ async function main(): Promise<void> {
   const { summary } = report;
   const outage = isTransientOutage(report);
   if (!outage) writeJsonAtomic(values.out, listings);
+  if (merged.added) console.log(`merged ${merged.added} pending sources`);
   console.log(`crawled ${summary.sources} sources: ${summary.listed} listed, ${summary.rejected} rejected`);
   for (const r of report.results) {
     console.log(`  ${r.status === 'listed' ? 'listed  ' : 'rejected'} ${r.source}${r.reason ? `  ${r.reason}: ${r.detail}` : `  tier=${r.tier} cleared=${r.cleared}${r.flags?.length ? ` flags=${r.flags.join(',')}` : ''}`}`);

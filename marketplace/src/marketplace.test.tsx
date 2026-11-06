@@ -9,6 +9,7 @@ import { apply } from "./index";
 import { sourceOf } from "./install";
 import { createMarkdown } from "./markdown";
 import { CLIENT, hasReported, hasUpvoted, installerHash, REPORTED_KEY, reportInstall, SALT_KEY, sendVote, SHARE_KEY, VOTES_KEY } from "./ping";
+import { checkSource, parseSourceInput, submitSource } from "./submit";
 import { addedBy, installLine, listingLink, PAGE_ID, PLUGIN_ID, slugFromTarget, trustLabel, upvoteLabel } from "./view";
 
 const INDEX_URL = `${INDEX_ORIGIN}/v1/index.json`;
@@ -989,5 +990,161 @@ describe("upvoting", () => {
     await expect(sendVote(failing as never, counter, true)).resolves.toBe(false);
     window.localStorage.setItem(REPORTED_KEY, "not json");
     expect(hasReported(counter.key)).toBe(false);
+  });
+});
+
+describe("Add your plugin", () => {
+  const SOURCES_URL = `${INDEX_ORIGIN}/v1/sources`;
+  const RAW = "https://raw.githubusercontent.com/octo/plug/main";
+  type Route = { status: number; body?: string } | Error;
+  function submitHost(overrides: Record<string, Route> = {}) {
+    const routes: Record<string, Route> = {
+      [INDEX_URL]: { status: 200, body: JSON.stringify(demoFixture) },
+      "https://api.github.com/repos/octo/plug": { status: 200, body: JSON.stringify({ private: false, default_branch: "main" }) },
+      [`${RAW}/manifest.json`]: { status: 200, body: JSON.stringify({ id: "octo.plug", name: "Plug", apiVersion: 1, description: "Does a thing." }) },
+      [`${RAW}/plugin.js`]: { status: 200, body: "" },
+      [SOURCES_URL]: { status: 200, body: JSON.stringify({ status: "queued", listing: { key: "github.com/octo/plug", slug: "github-com--octo--plug", name: "Plug" } }) },
+      ...overrides,
+    };
+    const calls: { url: string; method: string; headers?: Record<string, string>; body?: string }[] = [];
+    const request = vi.fn(async (input: { url: string; method?: string; headers?: Record<string, string>; body?: string }) => {
+      calls.push({ url: input.url, method: input.method ?? "GET", headers: input.headers, body: input.body });
+      const route = routes[input.url];
+      if (route instanceof Error) throw route;
+      return { headers: {}, body: "", ...(route ?? { status: 404, body: "not found" }) };
+    });
+    return { request, calls };
+  }
+
+  async function openDialog(host = submitHost()) {
+    const { registered, open } = fakeContext({ request: host.request });
+    const Page = registered[0].component;
+    await act(async () => render(<Page />));
+    const trigger = await screen.findByRole("button", { name: "Add your plugin" });
+    trigger.focus();
+    fireEvent.click(trigger);
+    const dialog = screen.getByRole("dialog", { name: "Add your plugin" });
+    const [repository, ref] = within(dialog).getAllByRole("textbox") as HTMLInputElement[];
+    const submit = async (value: string, refValue = "") => {
+      fireEvent.change(repository!, { target: { value } });
+      fireEvent.change(ref!, { target: { value: refValue } });
+      await act(async () => {
+        fireEvent.click(within(dialog).getByRole("button", { name: "Check and submit" }));
+      });
+      await flush();
+    };
+    return { dialog, submit, host, open };
+  }
+
+  it("parses owner/repo, folders, links and refs", () => {
+    expect(parseSourceInput("octo/plug")).toEqual({ owner: "octo", repo: "plug", path: "" });
+    expect(parseSourceInput(" https://github.com/octo/plug.git/ ")).toEqual({ owner: "octo", repo: "plug", path: "" });
+    expect(parseSourceInput("octo/plug/plugins/one", "v1.2.0")).toEqual({ owner: "octo", repo: "plug", ref: "v1.2.0", path: "plugins/one" });
+    expect(parseSourceInput("https://github.com/octo/plug/tree/dev/plugins/one")).toEqual({ owner: "octo", repo: "plug", ref: "dev", path: "plugins/one" });
+    for (const bad of ["", "octo", "octo/..", "octo/plug/../x", "git@github.com:octo/plug", "octo/plug/a b"]) expect(parseSourceInput(bad)).toBeNull();
+    expect(parseSourceInput("octo/plug", "bad..ref")).toBeNull();
+  });
+
+  it("states what a listing needs", async () => {
+    const { dialog } = await openDialog();
+    expect(dialog.textContent).toContain("public GitHub repository");
+    expect(within(dialog).getByText("manifest.json")).toBeTruthy();
+    expect(within(dialog).getByText("plugin.js")).toBeTruthy();
+    expect(within(dialog).getByText("buzz-listing.yaml")).toBeTruthy();
+    expect((within(dialog).getByRole("button", { name: "Check and submit" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("checks the repository anonymously, shows what it found, then submits it", async () => {
+    const { dialog, submit, host } = await openDialog();
+    await submit("octo/plug");
+    expect(within(dialog).getByText("Plug")).toBeTruthy();
+    expect(within(dialog).getByText(/octo\.plug · octo\/plug @ main/)).toBeTruthy();
+    expect(within(dialog).getByText(/Submitted\. Plug will appear after the next index update/)).toBeTruthy();
+    const urls = host.calls.filter((call) => call.url !== INDEX_URL).map((call) => `${call.method} ${call.url}`);
+    expect(urls).toEqual([
+      "GET https://api.github.com/repos/octo/plug",
+      `GET ${RAW}/manifest.json`,
+      `HEAD ${RAW}/plugin.js`,
+      `POST ${SOURCES_URL}`,
+    ]);
+    for (const call of host.calls) expect(Object.keys(call.headers ?? {}).map((name) => name.toLowerCase())).not.toContain("authorization");
+    expect(JSON.parse(host.calls.at(-1)!.body!)).toEqual({ repository: "octo/plug", ref: "main" });
+    expect(within(dialog).getByRole("button", { name: "Done" })).toBeTruthy();
+  });
+
+  it("sends the folder and ref when there are ones", async () => {
+    const base = "https://raw.githubusercontent.com/octo/plug/v2/plugins/one";
+    const host = submitHost({
+      [`${base}/manifest.json`]: { status: 200, body: JSON.stringify({ id: "octo.one", name: "One" }) },
+      [`${base}/plugin.js`]: { status: 200 },
+    });
+    const { submit } = await openDialog(host);
+    await submit("octo/plug/plugins/one", "v2");
+    expect(JSON.parse(host.calls.at(-1)!.body!)).toEqual({ repository: "octo/plug", ref: "v2", path: "plugins/one" });
+  });
+
+  it("explains each reason the check fails, and submits nothing", async () => {
+    const cases: [Record<string, Route>, RegExp][] = [
+      [{ "https://api.github.com/repos/octo/plug": { status: 404 } }, /can't find octo\/plug/],
+      [{ "https://api.github.com/repos/octo/plug": { status: 200, body: JSON.stringify({ private: true }) } }, /is private/],
+      [{ "https://api.github.com/repos/octo/plug": { status: 403 } }, /HTTP 403/],
+      [{ [`${RAW}/manifest.json`]: { status: 404 } }, /no manifest\.json in the repository root on main/],
+      [{ [`${RAW}/manifest.json`]: { status: 200, body: "{nope" } }, /isn't valid JSON/],
+      [{ [`${RAW}/manifest.json`]: { status: 200, body: JSON.stringify({ id: "Bad Id", name: "x" }) } }, /needs an id/],
+      [{ [`${RAW}/plugin.js`]: { status: 404 } }, /no plugin\.js next to manifest\.json/],
+      [{ "https://api.github.com/repos/octo/plug": new Error("offline") }, /Couldn't reach GitHub/],
+    ];
+    for (const [overrides, message] of cases) {
+      const { dialog, submit, host } = await openDialog(submitHost(overrides));
+      await submit("octo/plug");
+      expect(within(dialog).getByText(message)).toBeTruthy();
+      expect(host.calls.some((call) => call.url === SOURCES_URL)).toBe(false);
+      cleanup();
+    }
+  });
+
+  it("asks for a usable repository before checking anything", async () => {
+    const { dialog, submit, host } = await openDialog();
+    await submit("not a repo");
+    expect(within(dialog).getByText(/Enter a GitHub repository/)).toBeTruthy();
+    expect(host.calls.filter((call) => call.url !== INDEX_URL)).toEqual([]);
+  });
+
+  it("shows the index's reason when it refuses, and links to a listing that already exists", async () => {
+    const refused = await openDialog(submitHost({ [SOURCES_URL]: { status: 422, body: JSON.stringify({ reason: "denylisted", detail: "github.com/octo/plug is in the denylist" }) } }));
+    await refused.submit("octo/plug");
+    expect(within(refused.dialog).getByText(/The index couldn't list it: github\.com\/octo\/plug is in the denylist/)).toBeTruthy();
+    cleanup();
+
+    const limited = await openDialog(submitHost({ [SOURCES_URL]: { status: 429, body: "{}" } }));
+    await limited.submit("octo/plug");
+    expect(within(limited.dialog).getByText(/Try again tomorrow/)).toBeTruthy();
+    cleanup();
+
+    const listed = await openDialog(
+      submitHost({ [SOURCES_URL]: { status: 200, body: JSON.stringify({ status: "listed", listing: { slug: counter.slug, name: "Counter" } }) } }),
+    );
+    await listed.submit("octo/plug");
+    expect(within(listed.dialog).getByText("Counter is already listed.")).toBeTruthy();
+    fireEvent.click(within(listed.dialog).getByRole("button", { name: "View listing" }));
+    expect(listed.open).toHaveBeenCalledWith(expect.objectContaining({ route: { version: 1, params: { slug: counter.slug } } }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("closes on Escape and keeps focus inside while open", async () => {
+    const { dialog } = await openDialog();
+    expect(document.activeElement).toBe(dialog);
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Add your plugin" }));
+  });
+
+  it("checkSource and submitSource stay inside the declared origins", async () => {
+    const host = submitHost();
+    const checked = await checkSource(host as never, { owner: "octo", repo: "plug", path: "" });
+    expect(checked.ok).toBe(true);
+    if (checked.ok) expect((await submitSource(host as never, checked.source)).ok).toBe(true);
+    const origins = new Set(host.calls.map((call) => new URL(call.url).origin));
+    for (const origin of origins) expect(manifest.host.networkOrigins).toContain(origin);
   });
 });

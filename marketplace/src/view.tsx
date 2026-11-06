@@ -14,6 +14,7 @@ import {
 import { activePluginIds, type InstallationStatus, type InstallResult, type PluginsCapability, sourceOf } from "./install";
 import { createMarkdown } from "./markdown";
 import { canVote, hasReported, hasUpvoted, reportInstall, sendVote, setShareEnabled, shareEnabled } from "./ping";
+import { type CheckedSource, checkSource, describeSource, parseSourceInput, submitSource, type SubmitResult } from "./submit";
 
 type ReactLike = Context["react"];
 type Phase = "review" | InstallResult | "failed";
@@ -355,7 +356,7 @@ export function createViews(ctx: Context, capability: PluginsCapability | undefi
     );
   }
 
-  function ManualInstall({ listing, onClose }: { listing: Listing; onClose(): void }) {
+  function Dialog({ label, onClose, children }: { label: string; onClose(): void; children: Node | Node[] }) {
     const dialog = React.useRef<HTMLDivElement>(null);
     const close = React.useRef(onClose);
     close.current = onClose;
@@ -365,7 +366,9 @@ export function createViews(ctx: Context, capability: PluginsCapability | undefi
       const onKey = (event: KeyboardEvent) => {
         if (event.key === "Escape") return close.current();
         if (event.key !== "Tab" || !dialog.current) return;
-        const focusable = [...dialog.current.querySelectorAll<HTMLElement>("button, [href], [tabindex]:not([tabindex='-1'])")];
+        const focusable = [
+          ...dialog.current.querySelectorAll<HTMLElement>("button:not(:disabled), input:not(:disabled), [href], [tabindex]:not([tabindex='-1'])"),
+        ];
         if (focusable.length === 0) return event.preventDefault();
         const first = focusable[0];
         const last = focusable[focusable.length - 1];
@@ -392,51 +395,182 @@ export function createViews(ctx: Context, capability: PluginsCapability | undefi
           className="bm-dialog"
           role="dialog"
           aria-modal="true"
-          aria-label={`Add ${listing.name}`}
+          aria-label={label}
           onClick={(event) => event.stopPropagation()}
         >
-          <h2>Add {listing.name}</h2>
-          <ol>
-            <li>
-              Open <strong>Settings → Plugins → Manage plugins</strong> and choose <strong>Git repository</strong>.
-            </li>
-            <li>
-              Paste the repository and branch:
-              <Copy value={listing.source.repository} />
-              <Copy value={listing.source.ref} />
-            </li>
-            <li>
-              Before installing, check that Buzz shows the indexed commit:
-              <Copy value={listing.source.commit} />
-            </li>
-            <li>
-              {listing.source.path ? (
-                <>
-                  Pick the <code>{listing.source.path}</code> folder, review
-                </>
-              ) : (
-                "Review"
-              )}{" "}
-              what it can access, then install.
-            </li>
-          </ol>
-          <p className="bm-note">This Buzz can't install plugins for you yet, so these are the manual steps.</p>
-          <div className="bm-actions">
-            <button className="bm-button" data-variant="quiet" onClick={onClose}>
-              Close
-            </button>
-            <button
-              className="bm-button"
-              onClick={() => {
-                void ctx.navigation.open({ version: 1, kind: "settings", section: "plugins" });
-                onClose();
-              }}
-            >
-              Open plugin settings
-            </button>
-          </div>
+          {children}
         </div>
       </div>
+    );
+  }
+
+  function ManualInstall({ listing, onClose }: { listing: Listing; onClose(): void }) {
+    return (
+      <Dialog label={`Add ${listing.name}`} onClose={onClose}>
+        <h2>Add {listing.name}</h2>
+        <ol>
+          <li>
+            Open <strong>Settings → Plugins → Manage plugins</strong> and choose <strong>Git repository</strong>.
+          </li>
+          <li>
+            Paste the repository and branch:
+            <Copy value={listing.source.repository} />
+            <Copy value={listing.source.ref} />
+          </li>
+          <li>
+            Before installing, check that Buzz shows the indexed commit:
+            <Copy value={listing.source.commit} />
+          </li>
+          <li>
+            {listing.source.path ? (
+              <>
+                Pick the <code>{listing.source.path}</code> folder, review
+              </>
+            ) : (
+              "Review"
+            )}{" "}
+            what it can access, then install.
+          </li>
+        </ol>
+        <p className="bm-note">This Buzz can't install plugins for you yet, so these are the manual steps.</p>
+        <div className="bm-actions">
+          <button className="bm-button" data-variant="quiet" onClick={onClose}>
+            Close
+          </button>
+          <button
+            className="bm-button"
+            onClick={() => {
+              void ctx.navigation.open({ version: 1, kind: "settings", section: "plugins" });
+              onClose();
+            }}
+          >
+            Open plugin settings
+          </button>
+        </div>
+      </Dialog>
+    );
+  }
+
+  type AddState =
+    | { step: "idle" }
+    | { step: "invalid" }
+    | { step: "checking" }
+    | { step: "rejected"; message: string }
+    | { step: "submitting"; source: CheckedSource }
+    | { step: "failed"; source: CheckedSource; message: string }
+    | { step: "done"; source: CheckedSource; result: Extract<SubmitResult, { ok: true }> };
+
+  function AddPlugin({ onClose }: { onClose(): void }) {
+    const [repository, setRepository] = useState("");
+    const [ref, setRef] = useState("");
+    const [state, setState] = useState<AddState>({ step: "idle" });
+    const busy = state.step === "checking" || state.step === "submitting";
+    const run = async () => {
+      const input = parseSourceInput(repository, ref);
+      if (!input) return setState({ step: "invalid" });
+      setState({ step: "checking" });
+      const checked = await checkSource(ctx.host, input);
+      if (!checked.ok) return setState({ step: "rejected", message: checked.message });
+      setState({ step: "submitting", source: checked.source });
+      const result = await submitSource(ctx.host, checked.source);
+      setState(result.ok ? { step: "done", source: checked.source, result } : { step: "failed", source: checked.source, message: result.message });
+    };
+    const found = "source" in state ? state.source : null;
+    const listedSlug = state.step === "done" && state.result.status === "listed" ? state.result.slug : undefined;
+    return (
+      <Dialog label="Add your plugin" onClose={onClose}>
+        <h2>Add your plugin</h2>
+        <p className="bm-dialog-lede">List a Buzz plugin whose source is in a public GitHub repository. It needs:</p>
+        <ul className="bm-requirements">
+          <li>
+            A built <code>manifest.json</code> and <code>plugin.js</code> committed on a branch or tag, at the repository root or in a folder.
+          </li>
+          <li>
+            Optionally, a <code>buzz-listing.yaml</code> next to them with a tagline, description, category, tags and screenshots.
+          </li>
+        </ul>
+        <form
+          className="bm-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (!busy) void run();
+          }}
+        >
+          <label className="bm-field">
+            <span>Repository</span>
+            <input
+              value={repository}
+              placeholder="owner/repo or owner/repo/path/to/plugin"
+              spellCheck={false}
+              autoCapitalize="off"
+              autoComplete="off"
+              onChange={(event) => setRepository(event.target.value)}
+            />
+          </label>
+          <label className="bm-field">
+            <span>Branch or tag (optional)</span>
+            <input
+              value={ref}
+              placeholder="Default branch"
+              spellCheck={false}
+              autoCapitalize="off"
+              autoComplete="off"
+              onChange={(event) => setRef(event.target.value)}
+            />
+          </label>
+          <div className="bm-check" role="status" aria-live="polite">
+            {state.step === "invalid" ? (
+              <p className="bm-check-error">Enter a GitHub repository as owner/repo, owner/repo/folder or a github.com link.</p>
+            ) : state.step === "checking" ? (
+              <p>Checking that the repository is public and has a built plugin…</p>
+            ) : state.step === "rejected" ? (
+              <p className="bm-check-error">{state.message}</p>
+            ) : null}
+            {found ? (
+              <div className="bm-check-found">
+                <strong>{found.name}</strong>
+                <span className="bm-note">
+                  {found.id} · {describeSource(found)} @ {found.ref}
+                </span>
+                {found.description ? <span className="bm-check-description">{found.description}</span> : null}
+              </div>
+            ) : null}
+            {state.step === "submitting" ? <p>Found it. Sending it to the index…</p> : null}
+            {state.step === "failed" ? <p className="bm-check-error">{state.message}</p> : null}
+            {state.step === "done" ? (
+              <p className="bm-check-success">
+                {state.result.status === "listed"
+                  ? `${state.result.name} is already listed.`
+                  : `Submitted. ${state.result.name} will appear after the next index update, usually within an hour.`}
+              </p>
+            ) : null}
+          </div>
+          <p className="bm-note">
+            Listings are unreviewed community content. Buzz still shows what a plugin can access, and the exact commit, before anyone installs it.
+          </p>
+          <div className="bm-actions">
+            <button type="button" className="bm-button" data-variant="quiet" onClick={onClose}>
+              {state.step === "done" ? "Done" : "Cancel"}
+            </button>
+            {listedSlug ? (
+              <button
+                type="button"
+                className="bm-button"
+                onClick={() => {
+                  void open(listedSlug);
+                  onClose();
+                }}
+              >
+                View listing
+              </button>
+            ) : state.step !== "done" ? (
+              <button type="submit" className="bm-button" disabled={busy || !repository.trim()}>
+                {busy ? "Checking…" : "Check and submit"}
+              </button>
+            ) : null}
+          </div>
+        </form>
+      </Dialog>
     );
   }
 
@@ -506,7 +640,7 @@ export function createViews(ctx: Context, capability: PluginsCapability | undefi
     );
   }
 
-  function Browse({ index, onManual }: { index: Index; onManual(listing: Listing): void }) {
+  function Browse({ index, onManual, onAdd }: { index: Index; onManual(listing: Listing): void; onAdd(): void }) {
     const [query, setQuery] = useState("");
     const [category, setCategory] = useState<string | null>(null);
     const [sort, setSort] = useState<Sort>("allTime");
@@ -521,16 +655,21 @@ export function createViews(ctx: Context, capability: PluginsCapability | undefi
             <h1 className="bm-title">Community Marketplace</h1>
             <p className="bm-subtitle">Open plugins from public Git repositories, ranked by how many people add and upvote them.</p>
           </div>
-          <label className="bm-search">
-            <Search />
-            <input
-              type="search"
-              placeholder="Search plugins"
-              aria-label="Search plugins"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-            />
-          </label>
+          <div className="bm-header-actions">
+            <label className="bm-search">
+              <Search />
+              <input
+                type="search"
+                placeholder="Search plugins"
+                aria-label="Search plugins"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+              />
+            </label>
+            <button className="bm-button" data-variant="quiet" onClick={onAdd}>
+              Add your plugin
+            </button>
+          </div>
         </header>
         <div className="bm-toolbar">
           <div className="bm-chips" role="group" aria-label="Sort">
@@ -748,6 +887,7 @@ export function createViews(ctx: Context, capability: PluginsCapability | undefi
   return function MarketplacePage({ navigation }: { navigation?: { target: unknown } }) {
     const [state, setState] = useState<{ index: Index; live: boolean } | null>(null);
     const [manual, setManual] = useState<Listing | null>(null);
+    const [adding, setAdding] = useState(false);
     useEffect(() => {
       let current = true;
       void loadIndex(ctx.host).then((result) => {
@@ -769,7 +909,7 @@ export function createViews(ctx: Context, capability: PluginsCapability | undefi
           ) : listing ? (
             <Detail key={listing.slug} listing={listing} onManual={setManual} />
           ) : (
-            <Browse index={state.index} onManual={setManual} />
+            <Browse index={state.index} onManual={setManual} onAdd={() => setAdding(true)} />
           )}
           {state ? (
             <footer className="bm-footer">
@@ -784,6 +924,7 @@ export function createViews(ctx: Context, capability: PluginsCapability | undefi
           ) : null}
         </div>
         {manual ? <ManualInstall listing={manual} onClose={() => setManual(null)} /> : null}
+        {adding ? <AddPlugin onClose={() => setAdding(false)} /> : null}
       </div>
     );
   };
