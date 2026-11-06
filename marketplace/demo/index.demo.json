@@ -1,0 +1,529 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-11-05T23:00:00Z",
+  "collectionStartedAt": "2026-11-01T00:00:00Z",
+  "mediaPolicy": "raw.githubusercontent.com at the pinned commit, or https URLs the author lists",
+  "plugins": [
+    {
+      "key": "github.com/nickhenggeler/buzz-projects-plugin",
+      "slug": "github-com--nickhenggeler--buzz-projects-plugin",
+      "id": "dev.nickhenggeler.projects",
+      "name": "Projects",
+      "tagline": "Track projects and their open threads in one Buzz page.",
+      "description": "Group channels and threads into **projects**, then see what moved today.\n\n- A board page with one column per project\n- Pin any thread to a project from its menu\n- Everything stays in your Buzz; no accounts or servers\n\nSee the [README](https://github.com/nickhenggeler/buzz-projects-plugin#readme) for the data it stores.",
+      "category": "productivity",
+      "tags": [
+        "projects",
+        "threads"
+      ],
+      "author": {
+        "github": "nickhenggeler"
+      },
+      "official": false,
+      "source": {
+        "repository": "https://github.com/nickhenggeler/buzz-projects-plugin",
+        "ref": "main",
+        "commit": "5c036fbf6c891174fadfc12ce27c0724e7bcc769",
+        "path": ""
+      },
+      "host": {
+        "networkOrigins": [],
+        "processes": [],
+        "commands": [],
+        "files": false,
+        "mcp": false,
+        "agentHooks": false
+      },
+      "audit": {
+        "tier": "low",
+        "flags": [],
+        "accessChanged": false,
+        "cleared": true,
+        "checkedAt": "2026-11-05T22:40:00Z"
+      },
+      "demo": {
+        "video": {
+          "url": "https://raw.githubusercontent.com/nickhenggeler/buzz-projects-plugin/5c036fbf6c891174fadfc12ce27c0724e7bcc769/demo/demo.mp4",
+          "type": "video/mp4"
+        },
+        "poster": {
+          "url": "https://raw.githubusercontent.com/nickhenggeler/buzz-projects-plugin/5c036fbf6c891174fadfc12ce27c0724e7bcc769/demo/poster.png",
+          "type": "image/png"
+        },
+        "screenshots": [
+          {
+            "url": "https://raw.githubusercontent.com/nickhenggeler/buzz-projects-plugin/5c036fbf6c891174fadfc12ce27c0724e7bcc769/demo/1.png",
+            "type": "image/png",
+            "caption": "The projects board"
+          },
+          {
+            "url": "https://raw.githubusercontent.com/nickhenggeler/buzz-projects-plugin/5c036fbf6c891174fadfc12ce27c0724e7bcc769/demo/2.png",
+            "type": "image/png",
+            "caption": "Pinning a thread"
+          }
+        ]
+      },
+      "setup": [],
+      "links": {
+        "repository": "https://github.com/nickhenggeler/buzz-projects-plugin"
+      },
+      "stars": 57,
+      "updatedAt": "2026-10-29T15:12:00Z",
+      "installs": {
+        "allTime": 142,
+        "last24h": 9,
+        "last7d": 31
+      },
+      "upvotes": 71
+    },
+    {
+      "key": "github.com/block/buzz-app/examples/plugins/counter",
+      "slug": "github-com--block--buzz-app--examples--plugins--counter",
+      "id": "xyz.block.examples.counter",
+      "name": "Counter",
+      "tagline": "The smallest Buzz plugin: a page with a button that counts.",
+      "description": "A reference plugin for authors. It registers one page, keeps a count in memory and shows how a plugin renders with the host's React and design tokens.",
+      "category": "developer-tools-and-integrations",
+      "tags": [
+        "example",
+        "starter"
+      ],
+      "author": {
+        "github": "block"
+      },
+      "official": true,
+      "source": {
+        "repository": "https://github.com/block/buzz-app",
+        "ref": "main",
+        "commit": "e3afe5cd0c79c2919210c9899044aed52a320ea3",
+        "path": "examples/plugins/counter"
+      },
+      "host": {
+        "networkOrigins": [],
+        "processes": [],
+        "commands": [],
+        "files": false,
+        "mcp": false,
+        "agentHooks": false
+      },
+      "audit": {
+        "tier": "low",
+        "flags": [],
+        "accessChanged": false,
+        "cleared": true,
+        "checkedAt": "2026-11-05T22:40:00Z"
+      },
+      "demo": {
+        "video": {
+          "url": "https://raw.githubusercontent.com/block/buzz-app/e3afe5cd0c79c2919210c9899044aed52a320ea3/examples/plugins/counter/demo/demo.mp4",
+          "type": "video/mp4"
+        },
+        "poster": {
+          "url": "https://raw.githubusercontent.com/block/buzz-app/e3afe5cd0c79c2919210c9899044aed52a320ea3/examples/plugins/counter/demo/poster.png",
+          "type": "image/png"
+        },
+        "screenshots": [
+          {
+            "url": "https://raw.githubusercontent.com/block/buzz-app/e3afe5cd0c79c2919210c9899044aed52a320ea3/examples/plugins/counter/demo/1.png",
+            "type": "image/png",
+            "caption": "The counter page"
+          }
+        ]
+      },
+      "setup": [
+        {
+          "title": "Open the Counter page",
+          "detail": "It appears in the top bar once the plugin is on."
+        }
+      ],
+      "links": {
+        "repository": "https://github.com/block/buzz-app"
+      },
+      "stars": 410,
+      "updatedAt": "2026-10-12T09:30:00Z",
+      "installs": {
+        "allTime": 388,
+        "last24h": 4,
+        "last7d": 22
+      },
+      "upvotes": 64
+    },
+    {
+      "key": "github.com/block/buzz-app/examples/plugins/notes",
+      "slug": "github-com--block--buzz-app--examples--plugins--notes",
+      "id": "xyz.block.examples.notes",
+      "name": "Notes",
+      "tagline": "A scratchpad page that remembers what you type.",
+      "description": "A second reference plugin: a notes page with a text area, saved to this device. Useful to see how plugins keep small amounts of state.",
+      "category": "productivity",
+      "tags": [
+        "notes",
+        "example"
+      ],
+      "author": {
+        "github": "block"
+      },
+      "official": true,
+      "source": {
+        "repository": "https://github.com/block/buzz-app",
+        "ref": "main",
+        "commit": "cb1baafb5d84cba4b1d41faaaf745820f81d9958",
+        "path": "examples/plugins/notes"
+      },
+      "host": {
+        "networkOrigins": [],
+        "processes": [],
+        "commands": [],
+        "files": false,
+        "mcp": false,
+        "agentHooks": false
+      },
+      "audit": {
+        "tier": "low",
+        "flags": [],
+        "accessChanged": false,
+        "cleared": true,
+        "checkedAt": "2026-11-05T22:40:00Z"
+      },
+      "demo": {
+        "screenshots": []
+      },
+      "setup": [],
+      "links": {
+        "repository": "https://github.com/block/buzz-app"
+      },
+      "stars": 410,
+      "updatedAt": "2026-10-12T09:30:00Z",
+      "installs": {
+        "allTime": 251,
+        "last24h": 11,
+        "last7d": 64
+      },
+      "upvotes": 96
+    },
+    {
+      "key": "github.com/block/buzz-app/examples/plugins/shortcut-counter",
+      "slug": "github-com--block--buzz-app--examples--plugins--shortcut-counter",
+      "id": "xyz.block.examples.shortcut-counter",
+      "name": "Shortcut Counter",
+      "tagline": "Count with a keyboard shortcut from anywhere in Buzz.",
+      "description": "Shows how a plugin registers a keyboard shortcut and updates a page from it.",
+      "category": "developer-tools-and-integrations",
+      "tags": [
+        "example",
+        "shortcuts"
+      ],
+      "author": {
+        "github": "block"
+      },
+      "official": true,
+      "source": {
+        "repository": "https://github.com/block/buzz-app",
+        "ref": "main",
+        "commit": "33e65c6f0b8f0bb43f7381c78fabefab534fbc1a",
+        "path": "examples/plugins/shortcut-counter"
+      },
+      "host": {
+        "networkOrigins": [],
+        "processes": [],
+        "commands": [],
+        "files": false,
+        "mcp": false,
+        "agentHooks": false
+      },
+      "audit": {
+        "tier": "low",
+        "flags": [],
+        "accessChanged": false,
+        "cleared": true,
+        "checkedAt": "2026-11-05T22:40:00Z"
+      },
+      "demo": {
+        "screenshots": []
+      },
+      "setup": [],
+      "links": {
+        "repository": "https://github.com/block/buzz-app"
+      },
+      "stars": 410,
+      "updatedAt": "2026-10-12T09:30:00Z",
+      "installs": {
+        "allTime": 96,
+        "last24h": 1,
+        "last7d": 8
+      },
+      "upvotes": 9
+    },
+    {
+      "key": "github.com/ada-ostrow/buzz-pr-digest",
+      "slug": "github-com--ada-ostrow--buzz-pr-digest",
+      "id": "dev.ada-ostrow.pr-digest",
+      "name": "PR Digest",
+      "tagline": "A daily digest of the pull requests waiting on you.",
+      "description": "Reads your **public** GitHub pull requests and posts a short digest page each morning.\n\n- Connects only to `api.github.com`\n- Needs no token for public repositories\n- Digest runs when you open Buzz",
+      "category": "developer-tools-and-integrations",
+      "tags": [
+        "github",
+        "reviews"
+      ],
+      "author": {
+        "github": "ada-ostrow"
+      },
+      "official": false,
+      "source": {
+        "repository": "https://github.com/ada-ostrow/buzz-pr-digest",
+        "ref": "main",
+        "commit": "ea8cce44a05c8c6849a790f21907a4ac10e65b73",
+        "path": ""
+      },
+      "host": {
+        "networkOrigins": [
+          "https://api.github.com"
+        ],
+        "processes": [],
+        "commands": [],
+        "files": false,
+        "mcp": false,
+        "agentHooks": false
+      },
+      "audit": {
+        "tier": "medium",
+        "flags": [],
+        "accessChanged": false,
+        "cleared": true,
+        "checkedAt": "2026-11-05T22:40:00Z"
+      },
+      "demo": {
+        "screenshots": []
+      },
+      "setup": [
+        {
+          "title": "Enter your GitHub username",
+          "detail": "Open the page and type it once. It stays on this device."
+        }
+      ],
+      "links": {
+        "repository": "https://github.com/ada-ostrow/buzz-pr-digest",
+        "docs": "https://github.com/ada-ostrow/buzz-pr-digest#usage"
+      },
+      "stars": 33,
+      "updatedAt": "2026-11-03T18:45:00Z",
+      "installs": {
+        "allTime": 74,
+        "last24h": 18,
+        "last7d": 52
+      },
+      "upvotes": 38
+    },
+    {
+      "key": "github.com/relaycrew/agent-toolbox",
+      "slug": "github-com--relaycrew--agent-toolbox",
+      "id": "io.relaycrew.agent-toolbox",
+      "name": "Agent Toolbox",
+      "tagline": "Shell, file and web tools for your agents.",
+      "description": "Gives agents a set of local tools over MCP: run commands, read files and fetch pages. **Needs broad access**; read what it can do before adding it.",
+      "category": "agent-tools",
+      "tags": [
+        "agents",
+        "mcp",
+        "shell"
+      ],
+      "author": {
+        "github": "relaycrew"
+      },
+      "official": false,
+      "source": {
+        "repository": "https://github.com/relaycrew/agent-toolbox",
+        "ref": "main",
+        "commit": "364ec0ccfbc4b20f8abbef9485dc36a39ba6ea0f",
+        "path": ""
+      },
+      "host": {
+        "networkOrigins": [
+          "https://api.relaycrew.dev"
+        ],
+        "processes": [
+          "relaycrew-helper --serve"
+        ],
+        "commands": [],
+        "files": true,
+        "mcp": true,
+        "agentHooks": true
+      },
+      "audit": {
+        "tier": "high",
+        "flags": [
+          {
+            "code": "dynamic-code",
+            "detail": "plugin.js builds code from a string at run time with the Function constructor."
+          },
+          {
+            "code": "undeclared-origin",
+            "detail": "plugin.js refers to telemetry.relaycrew.dev, which its manifest does not declare."
+          }
+        ],
+        "accessChanged": true,
+        "cleared": false,
+        "checkedAt": "2026-11-05T22:40:00Z"
+      },
+      "demo": {
+        "screenshots": []
+      },
+      "setup": [],
+      "links": {
+        "repository": "https://github.com/relaycrew/agent-toolbox"
+      },
+      "stars": 208,
+      "updatedAt": "2026-11-04T21:05:00Z",
+      "installs": {
+        "allTime": 310,
+        "last24h": 40,
+        "last7d": 120
+      },
+      "upvotes": 140
+    },
+    {
+      "key": "github.com/moss-lab/buzz-standup",
+      "slug": "github-com--moss-lab--buzz-standup",
+      "id": "app.moss-lab.standup",
+      "name": "Standup",
+      "tagline": "Collect a short standup from your channel and post the summary.",
+      "description": "Asks each member three questions in a thread and posts a summary when the last answer arrives. Shares a link to the summary page only inside your Buzz.",
+      "category": "communication",
+      "tags": [
+        "standup",
+        "team"
+      ],
+      "author": {
+        "github": "moss-lab"
+      },
+      "official": false,
+      "source": {
+        "repository": "https://github.com/moss-lab/buzz-standup",
+        "ref": "main",
+        "commit": "62e00519dc67dabf5df9c1195fec56bd793195b0",
+        "path": ""
+      },
+      "host": {
+        "networkOrigins": [
+          "https://raw.githubusercontent.com"
+        ],
+        "processes": [],
+        "commands": [],
+        "files": false,
+        "mcp": false,
+        "agentHooks": false
+      },
+      "audit": {
+        "tier": "medium",
+        "flags": [],
+        "accessChanged": false,
+        "cleared": true,
+        "checkedAt": "2026-11-05T22:40:00Z"
+      },
+      "demo": {
+        "screenshots": []
+      },
+      "setup": [],
+      "links": {
+        "repository": "https://github.com/moss-lab/buzz-standup"
+      },
+      "stars": 19,
+      "updatedAt": "2026-11-04T10:20:00Z",
+      "installs": {
+        "allTime": 48,
+        "last24h": 6,
+        "last7d": 29
+      },
+      "upvotes": 22
+    },
+    {
+      "key": "github.com/commonroom/buzz-roster",
+      "slug": "github-com--commonroom--buzz-roster",
+      "id": "org.commonroom.roster",
+      "name": "Roster",
+      "tagline": "See who is in each community and when they were last active.",
+      "description": "A people page for community owners: members, roles and recent activity in one list.",
+      "category": "people-and-communities",
+      "tags": [
+        "people",
+        "roles"
+      ],
+      "author": {
+        "github": "commonroom"
+      },
+      "official": false,
+      "source": {
+        "repository": "https://github.com/commonroom/buzz-roster",
+        "ref": "main",
+        "commit": "97b1590238a289297800be971ccd1fd9a33e790d",
+        "path": ""
+      },
+      "host": {
+        "networkOrigins": [],
+        "processes": [],
+        "commands": [],
+        "files": false,
+        "mcp": false,
+        "agentHooks": false
+      },
+      "audit": {
+        "tier": "low",
+        "flags": [],
+        "accessChanged": false,
+        "cleared": true,
+        "checkedAt": "2026-11-05T22:40:00Z"
+      },
+      "demo": {
+        "screenshots": []
+      },
+      "setup": [],
+      "links": {
+        "repository": "https://github.com/commonroom/buzz-roster"
+      },
+      "stars": 4,
+      "updatedAt": "2026-11-05T08:00:00Z",
+      "installs": {
+        "allTime": 2,
+        "last24h": 2,
+        "last7d": 2
+      },
+      "upvotes": 1
+    }
+  ],
+  "rankings": {
+    "allTime": [
+      "github.com/block/buzz-app/examples/plugins/counter",
+      "github.com/relaycrew/agent-toolbox",
+      "github.com/block/buzz-app/examples/plugins/notes",
+      "github.com/nickhenggeler/buzz-projects-plugin",
+      "github.com/block/buzz-app/examples/plugins/shortcut-counter",
+      "github.com/ada-ostrow/buzz-pr-digest",
+      "github.com/moss-lab/buzz-standup",
+      "github.com/commonroom/buzz-roster"
+    ],
+    "trending": [
+      "github.com/ada-ostrow/buzz-pr-digest",
+      "github.com/nickhenggeler/buzz-projects-plugin",
+      "github.com/block/buzz-app/examples/plugins/notes",
+      "github.com/moss-lab/buzz-standup",
+      "github.com/block/buzz-app/examples/plugins/counter"
+    ],
+    "hot": [
+      "github.com/block/buzz-app/examples/plugins/notes",
+      "github.com/ada-ostrow/buzz-pr-digest",
+      "github.com/nickhenggeler/buzz-projects-plugin",
+      "github.com/moss-lab/buzz-standup",
+      "github.com/block/buzz-app/examples/plugins/counter",
+      "github.com/block/buzz-app/examples/plugins/shortcut-counter"
+    ],
+    "mostUpvoted": [
+      "github.com/block/buzz-app/examples/plugins/notes",
+      "github.com/nickhenggeler/buzz-projects-plugin",
+      "github.com/block/buzz-app/examples/plugins/counter",
+      "github.com/ada-ostrow/buzz-pr-digest",
+      "github.com/moss-lab/buzz-standup",
+      "github.com/block/buzz-app/examples/plugins/shortcut-counter"
+    ]
+  }
+}
