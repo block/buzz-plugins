@@ -47,6 +47,7 @@ async function start(options: { deps?: Deps; keys?: string[]; denylist?: string;
       postJson('/v1/installs', { key: 'github.com/octo/plug', id: 'octo.plug', commit: COMMIT, installer: INSTALLER, client: 'community-marketplace/0.1.0', ...extra }),
     vote: () => postJson('/v1/votes', { key: 'github.com/octo/plug', id: 'octo.plug', voter: INSTALLER, vote: 1, client: 'community-marketplace/0.1.0' }),
     pending: () => jsonl(defaultPendingPath(storePath)),
+    pendingFeed: () => fetch(`${base}/v1/pending-sources.jsonl`),
     installs: () => jsonl(storePath),
   };
 }
@@ -66,6 +67,17 @@ test('a public source is queued and the would-be listing summary comes back', as
   assert.deepEqual(c.pending(), [
     { ts: '2026-11-05T12:00:00.000Z', key: 'github.com/octo/plug', id: 'octo.plug', repository: 'https://github.com/octo/plug', ref: 'main', path: '', commit: COMMIT },
   ]);
+});
+
+test('GET /v1/pending-sources.jsonl serves the pending store for the crawl', async () => {
+  const c = await start();
+  const empty = await c.pendingFeed();
+  assert.equal(empty.status, 200);
+  assert.equal(await empty.text(), '');
+  await c.submit({ repository: 'octo/plug' });
+  const res = await c.pendingFeed();
+  assert.match(res.headers.get('content-type') ?? '', /application\/x-ndjson/);
+  assert.deepEqual((await res.text()).split('\n').filter(Boolean).map((l) => JSON.parse(l)), c.pending());
 });
 
 test('resubmitting a queued source is idempotent and an indexed source reports listed', async () => {

@@ -371,6 +371,12 @@ export function createCollector(options: CollectorOptions): Server {
     send(res, 202, {});
   };
 
+  const getPending = async (res: ServerResponse): Promise<void> => {
+    await writes;
+    const body = await readFile(pendingPath, 'utf8').catch(() => '');
+    send(res, 200, body, { 'content-type': 'application/x-ndjson; charset=utf-8', 'cache-control': 'no-store' });
+  };
+
   const getIndex = async (res: ServerResponse): Promise<void> => {
     let body: string;
     try {
@@ -392,6 +398,10 @@ export function createCollector(options: CollectorOptions): Server {
       if (path === '/v1/sources') {
         if (req.method === 'POST') return postSource(req, res);
         return send(res, 405, { error: 'method not allowed' }, { allow: 'POST' });
+      }
+      if (path === '/v1/pending-sources.jsonl') {
+        if (req.method === 'GET') return getPending(res);
+        return send(res, 405, { error: 'method not allowed' }, { allow: 'GET' });
       }
       if (path === '/v1/votes') {
         if (req.method === 'POST') return postVote(req, res);

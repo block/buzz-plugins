@@ -149,13 +149,14 @@ A listing whose tier is `high`, or that has any flag, gets `audit.cleared: false
 ```
 
 - `repository` is `owner/repo` or `https://github.com/owner/repo`. `ref` is optional and defaults to the repository's default branch. `path` is optional and defaults to the root.
-- The collector runs the same credential-free publicity check, manifest check and `buzz-listing.yaml` validation as the crawl.
-- If they pass, the response is `200 {status, listing}`. `listing` is a summary of the would-be listing: `key`, `slug`, `id`, `name`, `tagline`, `category`, `official`, `source` and `audit` (`tier`, flag codes, `cleared`). `status` is one of:
+- The collector runs the same credential-free publicity check, manifest check and `buzz-listing.yaml` validation as the crawl. A host without a YAML parser may skip the `buzz-listing.yaml` step, since the crawl applies it anyway. A host that can't run `git` may resolve the ref with `GET https://api.github.com/repos/<owner>/<repo>/commits/<ref>`, also without credentials.
+- If they pass, the response is `200 {status, listing}`. `listing` summarizes the would-be listing with at least `key`, `slug`, `id`, `name`, `official` and `source`. The collector also includes `tagline`, `category` and `audit` (`tier`, flag codes, `cleared`). `status` is one of:
   - `queued`: the source was added to the pending store, or was already in it. The next crawl lists it.
   - `listed`: the key is already in the index. Nothing is stored.
 - If a check fails, the response is `422 {error, reason, detail}` with a [reason code](#publicly-available). A denylisted key gets reason `denylisted`.
 - A malformed body gets `400`. More than 20 submissions per IP per UTC day get `429`; this budget is separate from pings and votes. If GitHub is rate limiting or unreachable, the response is `503` with `retry-after`. When the pending store holds 5000 sources, new ones get `503`.
 - The pending store is append-only JSONL next to the install store (`pending-sources.jsonl`) with these fields: `{ts, key, id, repository, ref, path, commit}`. Nothing about the submitter is stored.
+- `GET /v1/pending-sources.jsonl` serves the pending store, so a crawl that runs elsewhere can fetch it and pass it with `--pending`.
 
 `GET /v1/index.json` serves the newest built index. CORS is open for GET.
 

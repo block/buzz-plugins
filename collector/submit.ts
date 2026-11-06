@@ -10,7 +10,7 @@ import type { Listing } from '../indexer/types.ts';
 export const MAX_SUBMISSIONS_PER_IP_PER_DAY = 20;
 export const MAX_PENDING_SOURCES = 5000;
 
-const TRANSIENT: ReadonlySet<string> = new Set<ReasonCode>(['rate-limited', 'network-error', 'repo-unavailable']);
+const TRANSIENT: ReadonlySet<string> = new Set<ReasonCode>(['rate-limited', 'network-error']);
 
 export interface Submission {
   repository: string;
