@@ -1,18 +1,19 @@
 # Open Buzz plugin index: phase 1 spec
 
-The index lists Buzz plugins that anyone can fetch from a public Git repository, and ranks them by anonymous install counts and upvotes. A plugin's source stays in its author's repository.
+The index lists Buzz plugins that anyone can fetch from a public Git repository. A plugin's source stays in its author's repository. The index is a static `index.json` that GitHub Actions builds from `sources.txt`; nothing about who installs a plugin is collected.
 
-Toolchain: Node 24 and pnpm. The indexer and collector run as plain TypeScript with `node --experimental-strip-types` and are tested with `node --test`. Keep dependencies to a minimum; `yaml` is fine.
+Toolchain: Node 24 and pnpm. The indexer runs as plain TypeScript with `node --experimental-strip-types` and are tested with `node --test`. Keep dependencies to a minimum; `yaml` is fine.
 
 ## Layout
 
 ```
 SPEC.md
-sources.txt           seed sources, one per line: <repository> <ref> [path]
+sources.txt           listed sources, one per line: <repository> <ref> [path]
 denylist.txt          listing keys never shown, one per line
+cleared.txt           <key> <commit> pairs a maintainer has cleared
 fixtures/index.json   a sample index the plugin and tests use
-indexer/              crawl, publicity check, audit, listing metadata, build index.json
-collector/            install ping, upvote and source submission HTTP server, stores, ranking job
+indexer/              crawl, publicity check, audit, listing metadata, build index.json, source checks
+.github/              publish and check workflows, and the list-a-plugin issue form
 marketplace/          the Community Marketplace Buzz plugin
 template/             a minimal plugin for authors to copy
 ```
@@ -32,7 +33,13 @@ If any step fails, the source isn't listed and the reason is recorded in the cra
 
 ## Sources
 
-The crawl reads `sources.txt`, then the collector's pending store (`pending-sources.jsonl`, see [Source submission API](#source-submission-api-collector)). Pending sources whose key is already in `sources.txt`, appears earlier in the pending store, or is in `denylist.txt` are skipped (keys compare case-insensitively). A pending source that fails the publicity check is reported like any other source and is checked again on the next crawl.
+`sources.txt` is the whole list. Adding a plugin means adding one line to it, by pull request, or by opening the **List a plugin** issue form for a maintainer to add. Keys in `denylist.txt` are skipped by the crawl and rejected by the source check (keys compare case-insensitively).
+
+### Source check
+
+`indexer/check-sources.ts` compares a proposed `sources.txt` (or the **Source line** field of a list-plugin issue) with the one on `main` and checks only the lines that are new or changed. Each must parse, must not repeat a key that stays listed, must not be denylisted, and must pass the same credential-free publicity check, manifest check and `buzz-listing.yaml` validation as the crawl. It writes a Markdown table with one row per line and exits non-zero if any line fails.
+
+The **Check sources** workflow runs it on pull requests that touch `sources.txt` and on issues labelled `list-plugin`, and comments with the table. It uses `pull_request_target` so it can comment on pull requests from forks, and it only ever runs the code on the default branch: the pull request's `sources.txt` and the issue body are read as data.
 
 ## Author metadata (optional)
 
@@ -70,7 +77,7 @@ Each crawled commit gets an audit:
   - `size`: `plugin.js` over 3 MiB.
 - `accessChanged`: true when the declared access differs from the previous index's pin for the same key.
 
-A listing whose tier is `high`, or that has any flag, gets `audit.cleared: false` unless its key appears in `cleared.txt` with that commit (a maintainer clearing it). Uncleared listings stay in the index but are left out of `trending` and `hot`.
+A listing whose tier is `high`, or that has any flag, gets `audit.cleared: false` unless its key appears in `cleared.txt` with that commit (a maintainer clearing it). Uncleared listings stay in the index; the marketplace says nobody has cleared that version.
 
 ## index.json (schemaVersion 1)
 
@@ -78,7 +85,6 @@ A listing whose tier is `high`, or that has any flag, gets `audit.cleared: false
 {
   "schemaVersion": 1,
   "generatedAt": "2026-11-05T23:00:00Z",
-  "collectionStartedAt": "2026-11-05T00:00:00Z",
   "mediaPolicy": "raw.githubusercontent.com at the pinned commit, or https URLs the author lists",
   "plugins": [
     {
@@ -99,88 +105,36 @@ A listing whose tier is `high`, or that has any flag, gets `audit.cleared: false
       "setup": [],
       "links": { "repository": "https://github.com/nickhenggeler/buzz-projects-plugin" },
       "stars": 0,
-      "updatedAt": "<commit date>",
-      "installs": { "allTime": 0, "last24h": 0, "last7d": 0 },
-      "upvotes": 0
+      "updatedAt": "<commit date>"
     }
-  ],
-  "rankings": { "allTime": ["<key>", "..."], "trending": ["..."], "hot": ["..."], "mostUpvoted": ["..."] }
+  ]
 }
 ```
 
 `official` is true when the owner is `block`. `host` is copied from the manifest's `host` and normalized: process and command entries become display strings such as `my-cli sync`. `source.path` is `""` for the repository root and never starts or ends with `/`.
 
-## Install ping API (collector)
+Plugins are sorted by key. Consumers sort and filter for themselves.
 
-`POST /v1/installs` with JSON and a 1 KiB limit:
+## Publishing
 
-```json
-{ "key": "github.com/o/r[/path]", "id": "<manifest id>", "commit": "<40-hex>", "installer": "<64-hex>", "client": "community-marketplace/0.1.0" }
-```
+The **Publish index** workflow runs every three hours, on pushes to `main` that change `sources.txt`, `denylist.txt`, `cleared.txt` or `indexer/`, and on demand. It:
 
-- `installer` is `sha256(localSalt + ":" + id)` in hex. `localSalt` is 32 random bytes kept only on the device. The collector never sees anything that identifies a person.
-- The response is `202 {}` on accept. A malformed body gets `400` and more than 30 pings per IP per UTC day `429`. IPs are only counted in memory for the rate limit and are never stored.
-- A key that isn't in the current index is accepted only when the collector can list it, so a plugin is listed on its first install:
-  - If the key is already in the pending store with the same manifest `id`, the ping is accepted.
-  - Otherwise the collector runs the same check as `POST /v1/sources` on the key's repository and path, at the ping's optional `ref` (a branch or tag name) or the default branch. The check spends the IP's submission budget. If it passes and the manifest `id` matches the ping's, the source goes into the pending store and the ping is stored.
-  - Otherwise the ping gets `404 {error, reason, detail}`, or `503` when GitHub is rate limiting or unreachable, and nothing is stored.
-- Storage is append-only JSONL with these fields: `{ts, key, id, commit, installer}`.
-- Dedup: one row per `(key, installer)` counts toward `allTime`. For windows, count distinct installers whose first ping for that key falls in the window.
+1. Reads the current `index.json` from the `index` branch as the previous index, so `accessChanged` compares against what was last published.
+2. Runs the crawl and validates the result against the schema. If every source failed because GitHub was rate limiting or unreachable, it stops without publishing, so a GitHub outage never blanks the index.
+3. Commits `index.json` and `crawl-report.json` to the `index` branch, an orphan branch that holds nothing else. Runs where only `generatedAt` and `audit.checkedAt` changed commit nothing.
 
-## Upvote API (collector)
-
-`POST /v1/votes` with JSON and a 1 KiB limit:
-
-```json
-{ "key": "github.com/o/r[/path]", "id": "<manifest id>", "voter": "<64-hex>", "vote": 1, "client": "community-marketplace/0.1.0" }
-```
-
-- `voter` is the same hash the device sent as `installer` for that plugin. `vote` is `1` to upvote and `0` to take it back.
-- The response is `202 {}` on accept. A malformed body gets `400`, an unknown key `404`, a voter with no install ping for that key `403`, and more than 60 votes per IP per UTC day `429`. Votes have their own daily budget, separate from install pings.
-- Storage is append-only JSONL next to the install store (`installs.jsonl` → `installs.votes.jsonl`) with these fields: `{ts, key, id, voter, vote}`.
-- The latest row per `(key, voter)` wins. `upvotes` counts voters whose latest vote is `1` and who have an install ping for that key, so it never exceeds `installs.allTime`.
-
-## Source submission API (collector)
-
-`POST /v1/sources` with JSON and a 1 KiB limit:
-
-```json
-{ "repository": "owner/repo", "ref": "main", "path": "plugins/notes" }
-```
-
-- `repository` is `owner/repo` or `https://github.com/owner/repo`. `ref` is optional and defaults to the repository's default branch. `path` is optional and defaults to the root.
-- The collector runs the same credential-free publicity check, manifest check and `buzz-listing.yaml` validation as the crawl. A host without a YAML parser may skip the `buzz-listing.yaml` step, since the crawl applies it anyway. A host that can't run `git` may resolve the ref with `GET https://api.github.com/repos/<owner>/<repo>/commits/<ref>`, also without credentials.
-- If they pass, the response is `200 {status, listing}`. `listing` summarizes the would-be listing with at least `key`, `slug`, `id`, `name`, `official` and `source`. The collector also includes `tagline`, `category` and `audit` (`tier`, flag codes, `cleared`). `status` is one of:
-  - `queued`: the source was added to the pending store, or was already in it. The next crawl lists it.
-  - `listed`: the key is already in the index. Nothing is stored.
-- If a check fails, the response is `422 {error, reason, detail}` with a [reason code](#publicly-available). A denylisted key gets reason `denylisted`.
-- A malformed body gets `400`. More than 20 submissions per IP per UTC day get `429`; this budget is separate from pings and votes. If GitHub is rate limiting or unreachable, the response is `503` with `retry-after`. When the pending store holds 5000 sources, new ones get `503`.
-- The pending store is append-only JSONL next to the install store (`pending-sources.jsonl`) with these fields: `{ts, key, id, repository, ref, path, commit}`. Nothing about the submitter is stored.
-- `GET /v1/pending-sources.jsonl` serves the pending store, so a crawl that runs elsewhere can fetch it and pass it with `--pending`.
-
-`GET /v1/index.json` serves the newest built index. CORS is open for GET.
-
-### Ranking job
-
-`collector/rank.ts` reads the store and the crawled listings and writes `index.json`:
-- `allTime`: distinct installers, descending. Ties go to the newer `updatedAt`, then the key.
-- `trending`: distinct new installers in the last 24h, minus the daily average over the previous 7 days. Only positive scores count, and only cleared listings with at least 3 all-time installers.
-- `hot`: `Σ exp(-age_hours / 72)` over each installer's first ping in the last 7 days, under the same eligibility rule as `trending`.
-- `mostUpvoted`: `upvotes`, descending, under the same eligibility rule as `trending`, and only listings with at least one upvote. Ties go to more all-time installers, then the key.
-- Keys in `denylist.txt` are dropped everywhere.
+The published index is `https://raw.githubusercontent.com/<owner>/<repo>/index/index.json`. The workflow uses only the job's `GITHUB_TOKEN`, to push the `index` branch; the crawl itself never sends credentials.
 
 ## Community Marketplace plugin
 
 - Manifest id `xyz.block.community-marketplace`, name "Community Marketplace".
-- `host.networkOrigins` is exactly the index/collector origin, `https://api.github.com` and `https://raw.githubusercontent.com`. In phase 1 the index origin is a placeholder, `https://plugins.buzz.example`. Don't add any `processes` or `commands`.
+- `host.networkOrigins` is exactly `https://api.github.com` and `https://raw.githubusercontent.com`. The index is read from the `index` branch on `raw.githubusercontent.com`. Don't add any `processes` or `commands`.
 - What the plugin does:
-  - It reads `index.json` from the index origin, and falls back to a bundled copy of `fixtures/index.json`.
-  - Sort choices are All time, Trending, Hot and Most upvoted, plus Category and search. Each card shows its install count, its upvote count, the author, and an Official or "Community · not reviewed" label.
+  - It reads the published `index.json`, and falls back to a bundled copy of `fixtures/index.json`.
+  - Sort choices are Recently updated, Most stars and A–Z, plus Category and search. Each card shows the author, its stars, when it was last updated, and an Official or "Community · not reviewed" label.
   - The listing page shows the audit tier and flags above **Add to Buzz**, and an access summary from `host`.
   - **Add to Buzz** uses `ctx.reflect.get("pluginInstaller").requestInstall({repository, reference: ref, commit, path})`. Older hosts get the manual Git import steps.
-  - The plugin sends a ping only after an `installed` result, only for a key that's in the index, and only after its own `GET https://api.github.com/repos/<owner>/<repo>` returns `private: false`. The ping is fire-and-forget and never changes the install result.
-  - The listing page has an **Upvote** toggle. It's enabled only while the host reports the plugin `installed`, this device's install ping for that key was accepted, and sharing is on. It sends `POST /v1/votes` with the same hash as the install ping, updates the count at once, and reverts if the collector doesn't accept it. The device remembers its own upvotes so the toggle survives a reload.
-  - A settings toggle, "Share anonymous install counts and upvotes", is on by default and stored in plugin storage or localStorage. While it's off, no ping or vote is sent.
   - The header has **Add your plugin**. It opens a dialog that states the requirements: a built `manifest.json` and `plugin.js` committed on a public branch or tag, and an optional `buzz-listing.yaml`. The author enters `owner/repo`, `owner/repo/path` or a github.com link, plus an optional branch or tag.
-  - The dialog first checks the source itself, without credentials: `GET https://api.github.com/repos/<owner>/<repo>` must return `private: false`, then `manifest.json` must parse with a valid `id` and `name`, and `plugin.js` must exist at `raw.githubusercontent.com` on that ref. It shows what it found, or why the source can't be listed, then sends `POST /v1/sources` and shows the index's answer.
+  - The dialog first checks the source itself, without credentials: `GET https://api.github.com/repos/<owner>/<repo>` must return `private: false`, then `manifest.json` must parse with a valid `id` and `name`, and `plugin.js` must exist at `raw.githubusercontent.com` on that ref. It shows what it found, or why the source can't be listed. A source that passes is shown as its `sources.txt` line, with two links on github.com: **Open a pull request**, which edits `sources.txt`, and **Request in an issue**, which opens the list-plugin issue form with the line filled in. A source whose key is already listed links to its listing instead.
+  - The plugin sends nothing about installs or the person using it.
 - None of the plugin's text, or this repository's, names other products or sites as a design source.

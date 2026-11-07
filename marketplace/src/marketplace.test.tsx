@@ -4,19 +4,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import demoFixture from "../demo/index.demo.json";
 import realFixture from "../../fixtures/index.json";
 import manifest from "../manifest.json";
-import { accessSummary, bundledIndex, categories, INDEX_ORIGIN, type Listing, loadIndex, parseIndex, parseKey, ranked, search } from "./catalog";
+import { accessSummary, bundledIndex, categories, INDEX_URL, type Listing, loadIndex, parseIndex, parseKey, search, sorted } from "./catalog";
 import { apply } from "./index";
 import { sourceOf } from "./install";
 import { createMarkdown } from "./markdown";
-import { CLIENT, hasReported, hasUpvoted, installerHash, REPORTED_KEY, reportInstall, SALT_KEY, sendVote, SHARE_KEY, VOTES_KEY } from "./ping";
-import { checkSource, parseSourceInput, submitSource } from "./submit";
-import { addedBy, installLine, listingLink, PAGE_ID, PLUGIN_ID, slugFromTarget, trustLabel, upvoteLabel } from "./view";
-
-const INDEX_URL = `${INDEX_ORIGIN}/v1/index.json`;
-const PING_URL = `${INDEX_ORIGIN}/v1/installs`;
-const VOTE_URL = `${INDEX_ORIGIN}/v1/votes`;
-const SALT = "ab".repeat(32);
-const COUNTER_HASH = "baf23647348cbb162473d539ae5f850866ab9a2c39c7f91ea0ffe3c8cb51cd0b";
+import { checkSource, listingLinks, parseSourceInput, sourceLine } from "./submit";
+import { listingLink, PAGE_ID, PLUGIN_ID, slugFromTarget, starLabel, trustLabel } from "./view";
 
 const demoIndex = parseIndex(demoFixture)!;
 const listings = demoIndex.plugins;
@@ -26,12 +19,10 @@ const counter = byName("Counter");
 const toolbox = byName("Agent Toolbox");
 const names = (plugins: readonly Listing[]) => plugins.map((plugin) => plugin.name);
 const rawListing = (overrides: Record<string, unknown> = {}) => ({ ...structuredClone(demoFixture.plugins[0]), ...overrides });
-const rawIndex = (plugins: unknown[], rankings: unknown = demoFixture.rankings) => ({ ...demoFixture, plugins, rankings });
+const rawIndex = (plugins: unknown[]) => ({ ...demoFixture, plugins });
 
 type Reply = { status: number; body: string } | Error;
-function hostWith(
-  routes: { index?: unknown; indexStatus?: number; github?: Reply; ping?: Reply; vote?: Reply } = {},
-) {
+function hostWith(routes: { index?: unknown; indexStatus?: number; github?: Reply } = {}) {
   const calls: { url: string; method: string; headers?: Record<string, string>; body?: string }[] = [];
   const request = vi.fn(async (input: { url: string; method?: string; headers?: Record<string, string>; body?: string }) => {
     calls.push({ url: input.url, method: input.method ?? "GET", headers: input.headers, body: input.body });
@@ -43,16 +34,9 @@ function hostWith(
       return reply({ status: routes.indexStatus ?? 200, body: JSON.stringify(routes.index === undefined ? demoFixture : routes.index) });
     if (input.url.startsWith("https://api.github.com/repos/"))
       return reply(routes.github ?? { status: 200, body: JSON.stringify({ private: false }) });
-    if (input.url === PING_URL) return reply(routes.ping ?? { status: 202, body: "{}" });
-    if (input.url === VOTE_URL) return reply(routes.vote ?? { status: 202, body: "{}" });
     throw new Error(`unexpected ${input.url}`);
   });
-  return {
-    request,
-    calls,
-    pings: () => calls.filter((call) => call.url === PING_URL),
-    votes: () => calls.filter((call) => call.url === VOTE_URL).map((call) => JSON.parse(call.body!)),
-  };
+  return { request, calls };
 }
 
 function fakeContext(overrides: { reflect?: unknown; request?: unknown; panels?: unknown; runEffects?: boolean } = {}) {
@@ -91,25 +75,21 @@ afterEach(() => {
 describe("index parsing", () => {
   it("keeps every listing of the demo index", () => {
     expect(listings).toHaveLength(demoFixture.plugins.length);
-    expect(demoIndex.rankings.allTime).toHaveLength(listings.length);
   });
 
   it("accepts the bundled crawl output without dropping anything", () => {
     expect(bundledIndex.plugins.length).toBeGreaterThan(0);
     expect(bundledIndex.plugins.map((plugin) => plugin.key)).toEqual(realFixture.plugins.map((plugin) => plugin.key));
-    expect(bundledIndex.rankings.allTime).toEqual(realFixture.rankings.allTime);
-    expect(bundledIndex.rankings.trending).toEqual(realFixture.rankings.trending);
-    expect(bundledIndex.rankings.hot).toEqual(realFixture.rankings.hot);
   });
 
   it("accepts a well-formed index", () => {
-    const parsed = parseIndex(rawIndex([rawListing()], { allTime: [demoFixture.plugins[0].key], trending: [], hot: [] }));
+    const parsed = parseIndex(rawIndex([rawListing()]));
     expect(parsed?.plugins).toHaveLength(1);
     expect(parsed?.generatedAt).toBe("2026-11-05T23:00:00.000Z");
   });
 
   it("rejects wrong shapes outright", () => {
-    for (const value of [null, "index", [], {}, { ...demoFixture, schemaVersion: 2 }, { ...demoFixture, plugins: "none" }, { ...demoFixture, generatedAt: "yesterday" }, { ...demoFixture, collectionStartedAt: undefined }])
+    for (const value of [null, "index", [], {}, { ...demoFixture, schemaVersion: 2 }, { ...demoFixture, plugins: "none" }, { ...demoFixture, generatedAt: "yesterday" }])
       expect(parseIndex(value)).toBeNull();
   });
 
@@ -138,9 +118,9 @@ describe("index parsing", () => {
       rawListing({ audit: { ...good.audit, tier: "extreme" } }),
       rawListing({ audit: { ...good.audit, cleared: "yes" } }),
       rawListing({ audit: { ...good.audit, flags: [{ code: "x" }] } }),
-      rawListing({ installs: { allTime: -1, last24h: 0, last7d: 0 } }),
-      rawListing({ installs: { allTime: 1.5, last24h: 0, last7d: 0 } }),
-      rawListing({ installs: undefined }),
+      rawListing({ stars: -1 }),
+      rawListing({ stars: 1.5 }),
+      rawListing({ updatedAt: "last week" }),
       rawListing({ demo: { poster: { url: "javascript:alert(1)" }, screenshots: [] } }),
       good,
     ];
@@ -176,8 +156,8 @@ describe("index parsing", () => {
 });
 
 describe("loadIndex", () => {
-  it("reads the index from the index origin", async () => {
-    const { request, calls } = hostWith({ index: rawIndex([rawListing()], { allTime: [], trending: [], hot: [] }) });
+  it("reads the published index", async () => {
+    const { request, calls } = hostWith({ index: rawIndex([rawListing()]) });
     const result = await loadIndex({ request } as never);
     expect(result.live).toBe(true);
     expect(result.index.plugins).toHaveLength(1);
@@ -197,72 +177,33 @@ describe("loadIndex", () => {
 });
 
 describe("sort orders", () => {
-  it("lists every plugin in All time order, uncleared ones included", () => {
-    expect(names(ranked(demoIndex, "allTime"))).toEqual([
-      "Counter",
-      "Agent Toolbox",
-      "Notes",
-      "Projects",
-      "Shortcut Counter",
-      "PR Digest",
-      "Standup",
+  it("lists every plugin, newest commit first, uncleared ones included", () => {
+    expect(names(sorted(demoIndex, "updated"))).toEqual([
       "Roster",
+      "Agent Toolbox",
+      "Standup",
+      "PR Digest",
+      "Projects",
+      "Counter",
+      "Notes",
+      "Shortcut Counter",
     ]);
   });
 
-  it("orders Trending by new installers over the daily average", () => {
-    expect(names(ranked(demoIndex, "trending"))).toEqual(["PR Digest", "Projects", "Notes", "Standup", "Counter"]);
+  it("orders by GitHub stars, then by name", () => {
+    expect(names(sorted(demoIndex, "stars"))).toEqual(["Counter", "Notes", "Shortcut Counter", "Agent Toolbox", "Projects", "PR Digest", "Standup", "Roster"]);
   });
 
-  it("orders Hot by recent installs", () => {
-    expect(names(ranked(demoIndex, "hot"))).toEqual(["Notes", "PR Digest", "Projects", "Standup", "Counter", "Shortcut Counter"]);
+  it("orders by name", () => {
+    expect(names(sorted(demoIndex, "name"))).toEqual(["Agent Toolbox", "Counter", "Notes", "PR Digest", "Projects", "Roster", "Shortcut Counter", "Standup"]);
   });
 
-  it("keeps uncleared listings out of Trending and Hot even when the index ranks them", () => {
-    expect(toolbox.audit.cleared).toBe(false);
-    const parsed = parseIndex(
-      rawIndex(demoFixture.plugins, {
-        allTime: demoFixture.rankings.allTime,
-        trending: [toolbox.key, ...demoFixture.rankings.trending],
-        hot: [toolbox.key, ...demoFixture.rankings.hot],
-      }),
-    )!;
-    expect(names(ranked(parsed, "trending"))).not.toContain("Agent Toolbox");
-    expect(names(ranked(parsed, "hot"))).not.toContain("Agent Toolbox");
-    expect(names(ranked(parsed, "allTime"))).toContain("Agent Toolbox");
-  });
-
-  it("ignores unknown and repeated ranking keys and appends unranked listings to All time", () => {
-    const [first, second] = demoFixture.plugins;
-    const other = { ...structuredClone(second), installs: { allTime: 500, last24h: 0, last7d: 0 } };
-    const parsed = parseIndex(rawIndex([first, other], { allTime: [first.key, first.key, "github.com/x/missing"], trending: ["github.com/x/missing"], hot: 5 }))!;
-    expect(parsed.rankings).toEqual({ allTime: [first.key, other.key], trending: [], hot: [], mostUpvoted: [] });
-  });
-});
-
-describe("upvotes in the index", () => {
-  it("orders Most upvoted by upvotes, leaving out uncleared listings and listings without upvotes", () => {
-    expect(names(ranked(demoIndex, "mostUpvoted"))).toEqual(["Notes", "Projects", "Counter", "PR Digest", "Standup", "Shortcut Counter"]);
-    const parsed = parseIndex(
-      rawIndex(
-        demoFixture.plugins.map((plugin) => (plugin.name === "Standup" ? { ...plugin, upvotes: 0 } : plugin)),
-        { ...demoFixture.rankings, mostUpvoted: [toolbox.key, ...demoFixture.rankings.mostUpvoted] },
-      ),
-    )!;
-    expect(names(ranked(parsed, "mostUpvoted"))).toEqual(["Notes", "Projects", "Counter", "PR Digest", "Shortcut Counter"]);
-  });
-
-  it("accepts an index without upvotes and drops listings with bad counts", () => {
-    const { upvotes: _, ...plain } = rawListing();
-    const older = parseIndex(rawIndex([plain], { allTime: [plain.key], trending: [], hot: [] }))!;
-    expect(older.plugins).toHaveLength(1);
-    expect(older.rankings.mostUpvoted).toEqual([]);
-    for (const upvotes of [-1, 1.5, "3", null]) expect(parseIndex(rawIndex([rawListing({ upvotes }), plain]))?.plugins).toHaveLength(1);
-  });
-
-  it("keeps the bundled crawl's upvotes and ranking", () => {
-    expect(bundledIndex.rankings.mostUpvoted).toEqual(realFixture.rankings.mostUpvoted);
-    expect(bundledIndex.plugins.map((plugin) => plugin.upvotes)).toEqual(realFixture.plugins.map((plugin) => plugin.upvotes));
+  it("puts listings without stars or a date last, and never reorders the index itself", () => {
+    const { stars: _s, updatedAt: _u, ...bare } = rawListing({ key: "github.com/someone/bare", slug: "github-com--someone--bare", name: "Bare", author: { github: "someone" }, source: { ...demoFixture.plugins[0].source, repository: "https://github.com/someone/bare", path: "" } });
+    const parsed = parseIndex(rawIndex([bare, ...demoFixture.plugins]))!;
+    expect(names(sorted(parsed, "updated")).at(-1)).toBe("Bare");
+    expect(names(sorted(parsed, "stars")).at(-1)).toBe("Bare");
+    expect(parsed.plugins[0].name).toBe("Bare");
   });
 });
 
@@ -281,8 +222,8 @@ describe("search and categories", () => {
     expect(search(listings, "counter", "communication")).toEqual([]);
   });
 
-  it("keeps ranked order after filtering", () => {
-    expect(names(search(ranked(demoIndex, "hot"), "", "productivity"))).toEqual(["Notes", "Projects"]);
+  it("keeps the sort order after filtering", () => {
+    expect(names(search(sorted(demoIndex, "updated"), "", "productivity"))).toEqual(["Projects", "Notes"]);
   });
 
   it("only uses known categories", () => {
@@ -340,25 +281,20 @@ describe("pure helpers", () => {
     expect(slugFromTarget({ kind: "page" })).toBeNull();
   });
 
-  it("labels trust and counts", () => {
+  it("labels trust and stars", () => {
     expect(trustLabel(counter)).toBe("Official");
     expect(trustLabel(toolbox)).toBe("Community · not reviewed");
-    expect(addedBy(1)).toBe("Added by 1 person");
-    expect(addedBy(1234)).toBe("Added by 1,234 people");
-    expect(installLine(counter, "allTime")).toBe("Added by 388 people");
-    expect(installLine(counter, "trending")).toBe("Added by 388 people · +4 today");
-    expect(installLine(counter, "hot")).toBe("Added by 388 people · +22 this week");
-    expect(installLine({ ...counter, installs: { allTime: 0, last24h: 0, last7d: 0 } }, "allTime")).toBeNull();
-    expect(upvoteLabel(1)).toBe("1 upvote");
-    expect(upvoteLabel(1234)).toBe("1,234 upvotes");
+    expect(starLabel(1)).toBe("1 star on GitHub");
+    expect(starLabel(1234)).toBe("1,234 stars on GitHub");
   });
 });
 
 describe("manifest", () => {
-  it("declares exactly the index, GitHub API and raw file origins and nothing to run", () => {
+  it("declares exactly the GitHub API and raw file origins and nothing to run", () => {
     expect(manifest.id).toBe("xyz.block.community-marketplace");
     expect(manifest.name).toBe("Community Marketplace");
-    expect(manifest.host).toEqual({ networkOrigins: ["https://plugins.buzz.example", "https://api.github.com", "https://raw.githubusercontent.com"] });
+    expect(manifest.host).toEqual({ networkOrigins: ["https://api.github.com", "https://raw.githubusercontent.com"] });
+    expect(manifest.host.networkOrigins).toContain(new URL(INDEX_URL).origin);
   });
 });
 
@@ -380,20 +316,23 @@ describe("marketplace page", () => {
     expect(svg).not.toMatch(/stroke\s*:\s*#/);
   });
 
-  it("shows cards with install counts, author and a trust label", async () => {
+  it("shows cards with stars, last update, author and a trust label", async () => {
     const { registered } = fakeContext();
     const Page = registered[0].component;
     await act(async () => render(<Page />));
     expect(await screen.findByRole("heading", { name: "Community Marketplace", level: 1 })).toBeTruthy();
-    expect(cardNames()).toEqual(names(ranked(demoIndex, "allTime")));
+    expect(cardNames()).toEqual(names(sorted(demoIndex, "updated")));
     const card = screen.getByText("Counter", { selector: ".bm-card-name" }).closest(".bm-card") as HTMLElement;
-    expect(within(card).getByText("Added by 388 people")).toBeTruthy();
+    expect(within(card).getByText("Updated Oct 12, 2026")).toBeTruthy();
+    expect(within(card).getByLabelText("410 stars on GitHub").textContent).toBe("★ 410");
     expect(within(card).getByText("by block")).toBeTruthy();
     expect(within(card).getByText("Official")).toBeTruthy();
     const community = screen.getByText("Agent Toolbox", { selector: ".bm-card-name" }).closest(".bm-card") as HTMLElement;
     expect(within(community).getByText("Unreviewed").getAttribute("title")).toBe("Community · not reviewed");
     expect(within(community).getByText("by relaycrew")).toBeTruthy();
     expect(screen.queryByText(/Showing the index built into this version/)).toBeNull();
+    expect(screen.getByText(/Index updated Nov 5, 2026\. Nothing about what you install is sent anywhere\./)).toBeTruthy();
+    expect(screen.queryByRole("switch")).toBeNull();
   });
 
   it("shows the bundled index and says so when the live one can't be reached", async () => {
@@ -401,53 +340,32 @@ describe("marketplace page", () => {
     const Page = registered[0].component;
     await act(async () => render(<Page />));
     expect(await screen.findByText(/Showing the index built into this version/)).toBeTruthy();
-    expect(cardNames()).toEqual(names(ranked(bundledIndex, "allTime")));
+    expect(cardNames()).toEqual(names(sorted(bundledIndex, "updated")));
   });
 
-  it("switches between All time, Trending and Hot", async () => {
+  it("switches between Recently updated, Most stars and A–Z", async () => {
     const { registered } = fakeContext({ request: hostWith({ index: demoFixture }).request });
     const Page = registered[0].component;
     await act(async () => render(<Page />));
     const sort = await screen.findByRole("group", { name: "Sort" });
-    expect(within(sort).getByRole("button", { name: "All time" }).getAttribute("aria-pressed")).toBe("true");
-    expect(screen.queryByText(/Showing the index built into this version/)).toBeNull();
+    expect(within(sort).getByRole("button", { name: "Recently updated" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("heading", { name: "Recently updated", level: 2 })).toBeTruthy();
 
-    fireEvent.click(within(sort).getByRole("button", { name: "Trending" }));
-    expect(cardNames()).toEqual(names(ranked(demoIndex, "trending")));
-    expect(cardNames()).not.toContain("Agent Toolbox");
-    expect(screen.getByText("Added by 74 people · +18 today")).toBeTruthy();
-
-    fireEvent.click(within(sort).getByRole("button", { name: "Hot" }));
-    expect(cardNames()).toEqual(names(ranked(demoIndex, "hot")));
-    expect(cardNames()).not.toContain("Agent Toolbox");
-    expect(screen.getByText("Added by 251 people · +64 this week")).toBeTruthy();
-
-    fireEvent.click(within(sort).getByRole("button", { name: "Most upvoted" }));
-    expect(cardNames()).toEqual(names(ranked(demoIndex, "mostUpvoted")));
-    expect(screen.getByRole("heading", { name: "Most upvoted", level: 2 })).toBeTruthy();
-
-    fireEvent.click(within(sort).getByRole("button", { name: "All time" }));
+    fireEvent.click(within(sort).getByRole("button", { name: "Most stars" }));
+    expect(cardNames()).toEqual(names(sorted(demoIndex, "stars")));
+    fireEvent.click(within(sort).getByRole("button", { name: "A–Z" }));
+    expect(cardNames()).toEqual(names(sorted(demoIndex, "name")));
     expect(cardNames()).toContain("Agent Toolbox");
   });
 
-  it("shows each card's upvote count, and none when it has no upvotes", async () => {
-    const plugins = demoFixture.plugins.map((plugin) => (plugin.name === "Roster" ? { ...plugin, upvotes: 0 } : plugin));
+  it("leaves out the star count when a plugin has none", async () => {
+    const plugins = demoFixture.plugins.map((plugin) => (plugin.name === "Roster" ? { ...plugin, stars: 0 } : plugin));
     const { registered } = fakeContext({ request: hostWith({ index: rawIndex(plugins) }).request });
     const Page = registered[0].component;
     await act(async () => render(<Page />));
     await screen.findByRole("heading", { name: "Community Marketplace", level: 1 });
-    const card = (name: string) => screen.getByText(name, { selector: ".bm-card-name" }).closest(".bm-card") as HTMLElement;
-    expect(within(card("Notes")).getByLabelText("96 upvotes").textContent).toBe("▲ 96");
-    expect(card("Roster").querySelector(".bm-card-votes")).toBeNull();
-  });
-
-  it("explains an empty Most upvoted list", async () => {
-    const empty = rawIndex(demoFixture.plugins, { ...demoFixture.rankings, mostUpvoted: [] });
-    const { registered } = fakeContext({ request: hostWith({ index: empty }).request });
-    const Page = registered[0].component;
-    await act(async () => render(<Page />));
-    fireEvent.click(await screen.findByRole("button", { name: "Most upvoted" }));
-    expect(screen.getByText(/Nothing has upvotes yet/)).toBeTruthy();
+    const card = screen.getByText("Roster", { selector: ".bm-card-name" }).closest(".bm-card") as HTMLElement;
+    expect(card.querySelector(".bm-card-stars")).toBeNull();
   });
 
   it("searches and filters by category within a sort", async () => {
@@ -457,7 +375,7 @@ describe("marketplace page", () => {
     await screen.findByRole("heading", { name: "Community Marketplace", level: 1 });
     fireEvent.change(screen.getByRole("searchbox", { name: "Search plugins" }), { target: { value: "counter" } });
     expect(screen.getByText("2 plugins")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Hot" }));
+    fireEvent.click(screen.getByRole("button", { name: "Most stars" }));
     expect(cardNames()).toEqual(["Counter", "Shortcut Counter"]);
     fireEvent.click(within(screen.getByRole("group", { name: "Categories" })).getByRole("button", { name: "Communication" }));
     expect(screen.getByText("No plugins match.")).toBeTruthy();
@@ -472,13 +390,11 @@ describe("marketplace page", () => {
     });
   });
 
-  it("explains an empty Trending list", async () => {
-    const empty = rawIndex(demoFixture.plugins, { allTime: demoFixture.rankings.allTime, trending: [], hot: [] });
-    const { registered } = fakeContext({ request: hostWith({ index: empty }).request });
+  it("says when nothing is listed", async () => {
+    const { registered } = fakeContext({ request: hostWith({ index: rawIndex([]) }).request });
     const Page = registered[0].component;
     await act(async () => render(<Page />));
-    fireEvent.click(await screen.findByRole("button", { name: "Trending" }));
-    expect(screen.getByText(/Nothing is ranked here yet/)).toBeTruthy();
+    expect(await screen.findByText("Nothing is listed yet.")).toBeTruthy();
   });
 
   it("shows the audit tier and flags above Add to Buzz, with access, setup and links", async () => {
@@ -492,7 +408,7 @@ describe("marketplace page", () => {
     expect(within(audit).getByText("dynamic-code")).toBeTruthy();
     expect(within(audit).getByText("undeclared-origin")).toBeTruthy();
     expect(within(audit).getByText("Community · not reviewed")).toBeTruthy();
-    expect(audit.textContent).toContain("isn't ranked in Trending or Hot");
+    expect(audit.textContent).toContain("hasn't cleared this version");
     expect(audit.textContent).toContain("changed since the last index");
     const access = screen.getByText("Can access").closest(".bm-aside-card") as HTMLElement;
     expect(access.textContent).toContain("Connect to api.relaycrew.dev");
@@ -510,7 +426,7 @@ describe("marketplace page", () => {
     const audit = screen.getByLabelText("Audit");
     expect(within(audit).getByText("Low access")).toBeTruthy();
     expect(within(audit).getByText("No flags from the automated scan.")).toBeTruthy();
-    expect(audit.textContent).not.toContain("isn't ranked");
+    expect(audit.textContent).not.toContain("hasn't cleared");
     expect(screen.getByText("Nothing beyond Buzz itself.")).toBeTruthy();
     expect(screen.getByRole("link", { name: "Watch the demo video" }).getAttribute("href")).toBe(projects.demo?.video?.url);
     expect(document.querySelectorAll(".bm-shots img")).toHaveLength(2);
@@ -686,315 +602,26 @@ describe("Add to Buzz", () => {
   });
 });
 
-describe("install pings", () => {
-  const outcomes = ["installed", "updated", "cancelled", "unavailable", "failed"];
 
-  async function add(slug: string, outcome: string, routes: Parameters<typeof hostWith>[0] = { index: demoFixture }) {
-    const net = hostWith(routes);
-    const requestInstall = vi.fn(async () => {
-      if (outcome === "failed") throw new Error("bad source");
-      return outcome;
-    });
-    const { registered } = fakeContext({ request: net.request, ...installer(requestInstall) });
-    const Page = registered[0].component;
-    await act(async () => render(<Page navigation={{ target: targetFor(slug) }} />));
-    await act(async () => fireEvent.click(await screen.findByRole("button", { name: "Add to Buzz" })));
-    await flush();
-    return net;
-  }
-
-  it("sends one ping with the right body and hash after an installed result", async () => {
-    window.localStorage.setItem(SALT_KEY, SALT);
-    const net = await add(counter.slug, "installed");
-    const github = net.calls.filter((call) => call.url.startsWith("https://api.github.com"));
-    expect(github).toEqual([
-      { url: "https://api.github.com/repos/block/buzz-app", method: "GET", headers: { accept: "application/vnd.github+json" }, body: undefined },
-    ]);
-    expect(net.calls.findIndex((call) => call.url === PING_URL)).toBeGreaterThan(net.calls.indexOf(github[0]));
-    const [ping] = net.pings();
-    expect(net.pings()).toHaveLength(1);
-    expect(ping.method).toBe("POST");
-    expect(ping.headers).toEqual({ "content-type": "application/json" });
-    expect(JSON.parse(ping.body!)).toEqual({
-      key: counter.key,
-      id: "xyz.block.examples.counter",
-      commit: counter.source.commit,
-      installer: COUNTER_HASH,
-      client: CLIENT,
-    });
-    expect(CLIENT).toBe("community-marketplace/0.1.0");
-    expect(ping.body!.length).toBeLessThan(1024);
-  });
-
-  it("sends nothing but the repository check unless the result is installed", async () => {
-    for (const outcome of outcomes.filter((name) => name !== "installed")) {
-      cleanup();
-      const net = await add(counter.slug, outcome);
-      expect(net.pings(), outcome).toHaveLength(0);
-      expect(net.calls.filter((call) => call.url.includes("api.github.com")), outcome).toHaveLength(0);
-    }
-  });
-
-  it("is on by default and generates a persistent 32-byte salt on first use", async () => {
-    expect(window.localStorage.getItem(SHARE_KEY)).toBeNull();
-    const net = await add(counter.slug, "installed");
-    expect(net.pings()).toHaveLength(1);
-    const salt = window.localStorage.getItem(SALT_KEY)!;
-    expect(salt).toMatch(/^[0-9a-f]{64}$/);
-    expect(await installerHash(counter.id)).toBe(JSON.parse(net.pings()[0].body!).installer);
-    expect(await installerHash(counter.id)).toBe(await installerHash(counter.id));
-    expect(await installerHash("xyz.block.examples.notes")).not.toBe(await installerHash(counter.id));
-    expect(window.localStorage.getItem(SALT_KEY)).toBe(salt);
-  });
-
-  it("sends nothing, not even the GitHub check, while the toggle is off", async () => {
-    window.localStorage.setItem(SHARE_KEY, "off");
-    const net = await add(counter.slug, "installed");
-    expect(net.pings()).toHaveLength(0);
-    expect(net.calls.filter((call) => call.url.includes("api.github.com"))).toHaveLength(0);
-  });
-
-  it("turns pings off from the page and back on", async () => {
-    const net = hostWith({ index: demoFixture });
+describe("privacy", () => {
+  it("sends nothing after an install, and only ever reads the index", async () => {
+    const net = hostWith();
     const requestInstall = vi.fn(async () => "installed");
     const { registered } = fakeContext({ request: net.request, ...installer(requestInstall) });
     const Page = registered[0].component;
     await act(async () => render(<Page navigation={{ target: targetFor(counter.slug) }} />));
-    const toggle = (await screen.findByRole("switch", { name: "Share anonymous install counts and upvotes" })) as HTMLInputElement;
-    expect(toggle.checked).toBe(true);
-    expect(screen.getByText(/We send the plugin's address and a random ID that stays on this device/)).toBeTruthy();
-    fireEvent.click(toggle);
-    expect(toggle.checked).toBe(false);
-    expect(window.localStorage.getItem(SHARE_KEY)).toBe("off");
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Add to Buzz" })));
-    await flush();
-    expect(net.pings()).toHaveLength(0);
-    fireEvent.click(toggle);
-    expect(window.localStorage.getItem(SHARE_KEY)).toBe("on");
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Add to Buzz" })));
-    await flush();
-    expect(net.pings()).toHaveLength(1);
-  });
-
-  it("sends nothing when GitHub says the repository is private, unreadable or unexpected", async () => {
-    const cases: Record<string, Reply> = {
-      private: { status: 200, body: JSON.stringify({ private: true }) },
-      missing: { status: 404, body: JSON.stringify({ message: "Not Found" }) },
-      limited: { status: 403, body: "{}" },
-      "no flag": { status: 200, body: JSON.stringify({}) },
-      "string flag": { status: 200, body: JSON.stringify({ private: "false" }) },
-      "not json": { status: 200, body: "<html>" },
-      offline: new Error("offline"),
-    };
-    for (const [name, github] of Object.entries(cases)) {
-      cleanup();
-      const net = await add(counter.slug, "installed", { index: demoFixture, github });
-      expect(net.calls.some((call) => call.url.includes("api.github.com")), name).toBe(true);
-      expect(net.pings(), name).toHaveLength(0);
-      expect(screen.getByRole("status", { name: "Added to Buzz" }), name).toBeTruthy();
-    }
-  });
-
-  it("never sends the GitHub check with credentials", async () => {
-    const net = await add(counter.slug, "installed");
-    const check = net.calls.find((call) => call.url.includes("api.github.com"))!;
-    expect(Object.keys(check.headers ?? {}).map((name) => name.toLowerCase())).toEqual(["accept"]);
-  });
-
-  it("pings for a nested plugin using its repository, not its folder", async () => {
-    const net = await add(counter.slug, "installed");
-    expect(net.calls.find((call) => call.url.includes("api.github.com"))?.url).toBe("https://api.github.com/repos/block/buzz-app");
-  });
-
-  it("finishes the install even when the ping fails", async () => {
-    const net = await add(counter.slug, "installed", { index: demoFixture, ping: new Error("collector down") });
-    expect(net.pings()).toHaveLength(1);
-    expect(screen.getByRole("status", { name: "Added to Buzz" }).textContent).toContain("Counter is installed and turned on.");
-    cleanup();
-    const rejected = await add(counter.slug, "installed", { index: demoFixture, ping: { status: 429, body: "" } });
-    expect(rejected.pings()).toHaveLength(1);
-    expect(screen.getByRole("status", { name: "Added to Buzz" })).toBeTruthy();
-  });
-
-  it("doesn't wait for the ping before reporting the result", async () => {
-    let release: () => void = () => {};
-    const hold = new Promise<void>((resolve) => (release = resolve));
-    const request = vi.fn(async (input: { url: string }) => {
-      if (input.url === INDEX_URL) return { status: 200, headers: {}, body: JSON.stringify(demoFixture) };
-      if (input.url.includes("api.github.com")) {
-        await hold;
-        return { status: 200, headers: {}, body: JSON.stringify({ private: false }) };
-      }
-      return { status: 202, headers: {}, body: "{}" };
+    await act(async () => {
+      fireEvent.click(await screen.findByRole("button", { name: "Add to Buzz" }));
     });
-    const { registered } = fakeContext({ request, ...installer(vi.fn(async () => "installed")) });
-    const Page = registered[0].component;
-    await act(async () => render(<Page navigation={{ target: targetFor(counter.slug) }} />));
-    await act(async () => fireEvent.click(await screen.findByRole("button", { name: "Add to Buzz" })));
-    expect(screen.getByRole("status", { name: "Added to Buzz" })).toBeTruthy();
-    release();
     await flush();
-  });
-
-  it("only pings for a key that is in the index", async () => {
-    const host = hostWith();
-    expect(await reportInstall(host as never, counter, false)).toBeUndefined();
-    expect(host.request).not.toHaveBeenCalled();
-    await reportInstall(host as never, counter, true);
-    expect(host.pings()).toHaveLength(1);
-    await reportInstall(host as never, { ...counter, key: "gitlab.com/o/r" }, true);
-    expect(host.pings()).toHaveLength(1);
-    await expect(reportInstall(undefined, counter, true)).resolves.toBeUndefined();
-  });
-
-  it("skips the ping when no salt can be kept on this device", async () => {
-    const storage = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
-      throw new Error("denied");
-    });
-    const host = hostWith();
-    await reportInstall(host as never, counter, true);
-    storage.mockRestore();
-    expect(host.pings()).toHaveLength(0);
-  });
-});
-
-describe("upvoting", () => {
-  function statusHost(initial: "installed" | "absent" = "absent") {
-    let status: "installed" | "absent" = initial;
-    const listeners = new Set<(status: "installed" | "absent") => void>();
-    return {
-      set(next: "installed" | "absent") {
-        status = next;
-        act(() => listeners.forEach((listener) => listener(next)));
-      },
-      service: (requestInstall: () => Promise<string>) => ({
-        requestInstall,
-        getInstallationStatus: vi.fn(() => status),
-        subscribeInstallationStatus: vi.fn((_id: string, listener: (status: "installed" | "absent") => void) => {
-          listeners.add(listener);
-          return () => listeners.delete(listener);
-        }),
-      }),
-    };
-  }
-
-  async function page(options: { routes?: Parameters<typeof hostWith>[0]; status?: "installed" | "absent" } = {}) {
-    const net = hostWith(options.routes ?? { index: demoFixture });
-    const status = statusHost(options.status);
-    const requestInstall = vi.fn(async () => {
-      status.set("installed");
-      return "installed";
-    });
-    const service = status.service(requestInstall);
-    const { registered } = fakeContext({ request: net.request, reflect: { get: (name: string) => (name === "pluginInstaller" ? service : undefined) } });
-    const Page = registered[0].component;
-    await act(async () => render(<Page navigation={{ target: targetFor(counter.slug) }} />));
-    await screen.findByRole("button", { name: /Add to Buzz|Reinstall/ });
-    const upvote = () => screen.getByRole("button", { name: /▲ Upvote/ }) as HTMLButtonElement;
-    const add = async () => {
-      await act(async () => fireEvent.click(screen.getByRole("button", { name: /Add to Buzz|Reinstall/ })));
-      await flush();
-    };
-    return { net, status, service, upvote, add };
-  }
-
-  it("stays off until the plugin is added from here, then sends an upvote with the install hash", async () => {
-    window.localStorage.setItem(SALT_KEY, SALT);
-    const view = await page();
-    expect(view.upvote().disabled).toBe(true);
-    expect(screen.getByText("Add it to Buzz from here to upvote it.")).toBeTruthy();
-    expect(screen.getByText("64 upvotes")).toBeTruthy();
-    await view.add();
-    expect(hasReported(counter.key)).toBe(true);
-    expect(screen.getByRole("button", { name: "Reinstall" })).toBeTruthy();
-    expect(screen.getByText("Added", { selector: ".bm-badge" })).toBeTruthy();
-    expect(view.upvote().disabled).toBe(false);
-    expect(screen.queryByText("Add it to Buzz from here to upvote it.")).toBeNull();
-    await act(async () => fireEvent.click(view.upvote()));
-    await flush();
-    expect(view.net.votes()).toEqual([{ key: counter.key, id: "xyz.block.examples.counter", voter: COUNTER_HASH, vote: 1, client: CLIENT }]);
-    expect(view.upvote().getAttribute("aria-pressed")).toBe("true");
-    expect(view.upvote().textContent).toBe("▲ Upvoted");
-    expect(screen.getByText("65 upvotes")).toBeTruthy();
-    expect(hasUpvoted(counter.key)).toBe(true);
-    await act(async () => fireEvent.click(view.upvote()));
-    await flush();
-    expect(view.net.votes()[1].vote).toBe(0);
-    expect(screen.getByText("64 upvotes")).toBeTruthy();
-    expect(hasUpvoted(counter.key)).toBe(false);
-  });
-
-  it("doesn't unlock when the install ping wasn't accepted, or for a plugin installed elsewhere", async () => {
-    const rejected = await page({ routes: { index: demoFixture, ping: { status: 404, body: "{}" } } });
-    await rejected.add();
-    expect(rejected.upvote().disabled).toBe(true);
-    cleanup();
-    const elsewhere = await page({ status: "installed" });
-    expect(elsewhere.upvote().disabled).toBe(true);
-    expect(screen.getByText("Add it to Buzz from here to upvote it.")).toBeTruthy();
-  });
-
-  it("is off while anonymous sharing is off", async () => {
-    const view = await page();
-    await view.add();
-    fireEvent.click(screen.getByRole("switch", { name: "Share anonymous install counts and upvotes" }));
-    expect(view.upvote().disabled).toBe(true);
-    expect(screen.getByText("Turn on anonymous sharing below to upvote.")).toBeTruthy();
-    fireEvent.click(screen.getByRole("switch", { name: "Share anonymous install counts and upvotes" }));
-    expect(view.upvote().disabled).toBe(false);
-  });
-
-  it("is off when the plugin is removed again", async () => {
-    const view = await page();
-    await view.add();
-    expect(view.upvote().disabled).toBe(false);
-    view.status.set("absent");
-    expect(view.upvote().disabled).toBe(true);
-  });
-
-  it("shows the upvote right away and takes it back when the collector refuses it or the request fails", async () => {
-    for (const vote of [{ status: 403, body: "{}" }, new Error("offline")]) {
-      const view = await page({ routes: { index: demoFixture, vote } });
-      await view.add();
-      fireEvent.click(view.upvote());
-      expect(screen.getByText("65 upvotes")).toBeTruthy();
-      expect(view.upvote().disabled).toBe(true);
-      await flush();
-      expect(screen.getByText("64 upvotes")).toBeTruthy();
-      expect(view.upvote().getAttribute("aria-pressed")).toBe("false");
-      expect(hasUpvoted(counter.key)).toBe(false);
-      cleanup();
-      window.localStorage.clear();
-    }
-  });
-
-  it("remembers an upvote on this device without counting it twice", async () => {
-    window.localStorage.setItem(REPORTED_KEY, JSON.stringify([counter.key]));
-    window.localStorage.setItem(VOTES_KEY, JSON.stringify([counter.key]));
-    const view = await page({ status: "installed" });
-    expect(view.upvote().getAttribute("aria-pressed")).toBe("true");
-    expect(screen.getByText("64 upvotes")).toBeTruthy();
-    expect(view.upvote().disabled).toBe(false);
-  });
-
-  it("sendVote never throws and sends nothing it isn't allowed to", async () => {
-    const host = hostWith();
-    expect(await sendVote(host as never, counter, true)).toBe(false);
-    window.localStorage.setItem(REPORTED_KEY, JSON.stringify([counter.key]));
-    window.localStorage.setItem(SHARE_KEY, "off");
-    expect(await sendVote(host as never, counter, true)).toBe(false);
-    expect(host.request).not.toHaveBeenCalled();
-    window.localStorage.setItem(SHARE_KEY, "on");
-    expect(await sendVote(undefined, counter, true)).toBe(false);
-    const failing = { request: vi.fn(async () => Promise.reject(new Error("down"))) };
-    await expect(sendVote(failing as never, counter, true)).resolves.toBe(false);
-    window.localStorage.setItem(REPORTED_KEY, "not json");
-    expect(hasReported(counter.key)).toBe(false);
+    expect(requestInstall).toHaveBeenCalledTimes(1);
+    expect(net.calls.map((call) => `${call.method} ${call.url}`)).toEqual([`GET ${INDEX_URL}`]);
+    expect(window.localStorage.length).toBe(0);
+    expect(screen.queryByRole("button", { name: /Upvote/ })).toBeNull();
   });
 });
 
 describe("Add your plugin", () => {
-  const SOURCES_URL = `${INDEX_ORIGIN}/v1/sources`;
   const RAW = "https://raw.githubusercontent.com/octo/plug/main";
   type Route = { status: number; body?: string } | Error;
   function submitHost(overrides: Record<string, Route> = {}) {
@@ -1003,7 +630,6 @@ describe("Add your plugin", () => {
       "https://api.github.com/repos/octo/plug": { status: 200, body: JSON.stringify({ private: false, default_branch: "main" }) },
       [`${RAW}/manifest.json`]: { status: 200, body: JSON.stringify({ id: "octo.plug", name: "Plug", apiVersion: 1, description: "Does a thing." }) },
       [`${RAW}/plugin.js`]: { status: 200, body: "" },
-      [SOURCES_URL]: { status: 200, body: JSON.stringify({ status: "queued", listing: { key: "github.com/octo/plug", slug: "github-com--octo--plug", name: "Plug" } }) },
       ...overrides,
     };
     const calls: { url: string; method: string; headers?: Record<string, string>; body?: string }[] = [];
@@ -1029,7 +655,7 @@ describe("Add your plugin", () => {
       fireEvent.change(repository!, { target: { value } });
       fireEvent.change(ref!, { target: { value: refValue } });
       await act(async () => {
-        fireEvent.click(within(dialog).getByRole("button", { name: "Check and submit" }));
+        fireEvent.click(within(dialog).getByRole("button", { name: "Check" }));
       });
       await flush();
     };
@@ -1051,39 +677,51 @@ describe("Add your plugin", () => {
     expect(within(dialog).getByText("manifest.json")).toBeTruthy();
     expect(within(dialog).getByText("plugin.js")).toBeTruthy();
     expect(within(dialog).getByText("buzz-listing.yaml")).toBeTruthy();
-    expect((within(dialog).getByRole("button", { name: "Check and submit" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((within(dialog).getByRole("button", { name: "Check" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it("checks the repository anonymously, shows what it found, then submits it", async () => {
+  it("checks the repository anonymously, then links to a pull request and a prefilled issue", async () => {
     const { dialog, submit, host } = await openDialog();
     await submit("octo/plug");
     expect(within(dialog).getByText("Plug")).toBeTruthy();
     expect(within(dialog).getByText(/octo\.plug · octo\/plug @ main/)).toBeTruthy();
-    expect(within(dialog).getByText(/Submitted\. Plug will appear after the next index update/)).toBeTruthy();
+    expect(within(dialog).getByText(/It can be listed/)).toBeTruthy();
+    expect(within(dialog).getByText("https://github.com/octo/plug main")).toBeTruthy();
     const urls = host.calls.filter((call) => call.url !== INDEX_URL).map((call) => `${call.method} ${call.url}`);
-    expect(urls).toEqual([
-      "GET https://api.github.com/repos/octo/plug",
-      `GET ${RAW}/manifest.json`,
-      `HEAD ${RAW}/plugin.js`,
-      `POST ${SOURCES_URL}`,
-    ]);
+    expect(urls).toEqual(["GET https://api.github.com/repos/octo/plug", `GET ${RAW}/manifest.json`, `HEAD ${RAW}/plugin.js`]);
     for (const call of host.calls) expect(Object.keys(call.headers ?? {}).map((name) => name.toLowerCase())).not.toContain("authorization");
-    expect(JSON.parse(host.calls.at(-1)!.body!)).toEqual({ repository: "octo/plug", ref: "main" });
+    const pr = within(dialog).getByRole("link", { name: "Open a pull request" });
+    expect(pr.getAttribute("href")).toBe("https://github.com/block/buzz-plugins/edit/main/sources.txt");
+    expect(pr.getAttribute("target")).toBe("_blank");
+    const issue = new URL(within(dialog).getByRole("link", { name: "Request in an issue" }).getAttribute("href")!);
+    expect(`${issue.origin}${issue.pathname}`).toBe("https://github.com/block/buzz-plugins/issues/new");
+    expect(Object.fromEntries(issue.searchParams)).toEqual({ template: "list-plugin.yml", title: "List: Plug", source: "https://github.com/octo/plug main" });
     expect(within(dialog).getByRole("button", { name: "Done" })).toBeTruthy();
   });
 
-  it("sends the folder and ref when there are ones", async () => {
+  it("puts the folder and ref in the source line", async () => {
     const base = "https://raw.githubusercontent.com/octo/plug/v2/plugins/one";
     const host = submitHost({
       [`${base}/manifest.json`]: { status: 200, body: JSON.stringify({ id: "octo.one", name: "One" }) },
       [`${base}/plugin.js`]: { status: 200 },
     });
-    const { submit } = await openDialog(host);
+    const { dialog, submit } = await openDialog(host);
     await submit("octo/plug/plugins/one", "v2");
-    expect(JSON.parse(host.calls.at(-1)!.body!)).toEqual({ repository: "octo/plug", ref: "v2", path: "plugins/one" });
+    expect(within(dialog).getByText("https://github.com/octo/plug v2 plugins/one")).toBeTruthy();
+    const issue = new URL(within(dialog).getByRole("link", { name: "Request in an issue" }).getAttribute("href")!);
+    expect(issue.searchParams.get("source")).toBe("https://github.com/octo/plug v2 plugins/one");
   });
 
-  it("explains each reason the check fails, and submits nothing", async () => {
+  it("builds source lines and links the way sources.txt and the issue form expect", () => {
+    const source = { owner: "o", repo: "r", ref: "main", path: "", id: "o.r", name: "R & D", description: "" };
+    expect(sourceLine(source)).toBe("https://github.com/o/r main");
+    expect(sourceLine({ ...source, path: "a/b" })).toBe("https://github.com/o/r main a/b");
+    const links = listingLinks(source, "someone/fork");
+    expect(links.pullRequest).toBe("https://github.com/someone/fork/edit/main/sources.txt");
+    expect(new URL(links.issue).searchParams.get("title")).toBe("List: R & D");
+  });
+
+  it("explains each reason the check fails, and offers no links", async () => {
     const cases: [Record<string, Route>, RegExp][] = [
       [{ "https://api.github.com/repos/octo/plug": { status: 404 } }, /can't find octo\/plug/],
       [{ "https://api.github.com/repos/octo/plug": { status: 200, body: JSON.stringify({ private: true }) } }, /is private/],
@@ -1098,7 +736,7 @@ describe("Add your plugin", () => {
       const { dialog, submit, host } = await openDialog(submitHost(overrides));
       await submit("octo/plug");
       expect(within(dialog).getByText(message)).toBeTruthy();
-      expect(host.calls.some((call) => call.url === SOURCES_URL)).toBe(false);
+      expect(within(dialog).queryByRole("link", { name: "Open a pull request" })).toBeNull();
       cleanup();
     }
   });
@@ -1110,22 +748,18 @@ describe("Add your plugin", () => {
     expect(host.calls.filter((call) => call.url !== INDEX_URL)).toEqual([]);
   });
 
-  it("shows the index's reason when it refuses, and links to a listing that already exists", async () => {
-    const refused = await openDialog(submitHost({ [SOURCES_URL]: { status: 422, body: JSON.stringify({ reason: "denylisted", detail: "github.com/octo/plug is in the denylist" }) } }));
-    await refused.submit("octo/plug");
-    expect(within(refused.dialog).getByText(/The index couldn't list it: github\.com\/octo\/plug is in the denylist/)).toBeTruthy();
-    cleanup();
-
-    const limited = await openDialog(submitHost({ [SOURCES_URL]: { status: 429, body: "{}" } }));
-    await limited.submit("octo/plug");
-    expect(within(limited.dialog).getByText(/Try again tomorrow/)).toBeTruthy();
-    cleanup();
-
+  it("links to a listing that already exists instead of offering to list it again", async () => {
+    const counterRaw = `https://raw.githubusercontent.com/block/buzz-app/main/examples/plugins/counter`;
     const listed = await openDialog(
-      submitHost({ [SOURCES_URL]: { status: 200, body: JSON.stringify({ status: "listed", listing: { slug: counter.slug, name: "Counter" } }) } }),
+      submitHost({
+        "https://api.github.com/repos/block/buzz-app": { status: 200, body: JSON.stringify({ private: false, default_branch: "main" }) },
+        [`${counterRaw}/manifest.json`]: { status: 200, body: JSON.stringify({ id: "example.counter", name: "Counter" }) },
+        [`${counterRaw}/plugin.js`]: { status: 200 },
+      }),
     );
-    await listed.submit("octo/plug");
+    await listed.submit("block/buzz-app/examples/plugins/counter");
     expect(within(listed.dialog).getByText("Counter is already listed.")).toBeTruthy();
+    expect(within(listed.dialog).queryByRole("link", { name: "Open a pull request" })).toBeNull();
     fireEvent.click(within(listed.dialog).getByRole("button", { name: "View listing" }));
     expect(listed.open).toHaveBeenCalledWith(expect.objectContaining({ route: { version: 1, params: { slug: counter.slug } } }));
     expect(screen.queryByRole("dialog")).toBeNull();
@@ -1139,11 +773,10 @@ describe("Add your plugin", () => {
     expect(document.activeElement).toBe(screen.getByRole("button", { name: "Add your plugin" }));
   });
 
-  it("checkSource and submitSource stay inside the declared origins", async () => {
+  it("checkSource stays inside the declared origins", async () => {
     const host = submitHost();
     const checked = await checkSource(host as never, { owner: "octo", repo: "plug", path: "" });
     expect(checked.ok).toBe(true);
-    if (checked.ok) expect((await submitSource(host as never, checked.source)).ok).toBe(true);
     const origins = new Set(host.calls.map((call) => new URL(call.url).origin));
     for (const origin of origins) expect(manifest.host.networkOrigins).toContain(origin);
   });

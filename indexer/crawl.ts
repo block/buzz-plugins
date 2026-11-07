@@ -3,13 +3,12 @@ import { dirname, join } from 'node:path';
 import { cli } from './args.ts';
 import { buildListing } from './build.ts';
 import { realDeps } from './net.ts';
-import { mergePending } from './pending.ts';
 import type { Deps } from './net.ts';
 import type { ReasonCode } from './publicity.ts';
 import { listingKey, slugify } from './slug.ts';
-import { parseCleared, parseSources } from './sources.ts';
+import { parseCleared, parseKeyList, parseSources } from './sources.ts';
 import { isoSeconds } from './time.ts';
-import type { Listing, ListingsFile } from './types.ts';
+import { type IndexFile, type Listing, MEDIA_POLICY } from './types.ts';
 
 export interface CrawlResultEntry {
   source: string;
@@ -32,16 +31,18 @@ export interface CrawlReport {
 export interface CrawlOptions {
   sourcesText: string;
   clearedText?: string;
+  denylistText?: string;
   previous?: { plugins?: Listing[] } | null;
   deps: Deps;
   now?: () => number;
 }
 
-export async function crawl(options: CrawlOptions): Promise<{ listings: ListingsFile; report: CrawlReport }> {
+export async function crawl(options: CrawlOptions): Promise<{ index: IndexFile; report: CrawlReport }> {
   const now = options.now ?? Date.now;
   const previous = new Map<string, Listing>();
   for (const p of options.previous?.plugins ?? []) previous.set(p.key, p);
   const ctx = { now, previous, cleared: parseCleared(options.clearedText ?? '') };
+  const denied = new Set(parseKeyList(options.denylistText ?? '').map((k) => k.toLowerCase()));
 
   const results: CrawlResultEntry[] = [];
   const plugins: Listing[] = [];
@@ -62,6 +63,10 @@ export async function crawl(options: CrawlOptions): Promise<{ listings: Listings
       continue;
     }
     seenKeys.add(key.toLowerCase());
+    if (denied.has(key.toLowerCase())) {
+      results.push({ source: printable, key, status: 'rejected', reason: 'denylisted', detail: 'listing key is in denylist.txt' });
+      continue;
+    }
 
     const built = await buildListing(options.deps, source, ctx);
     if (!built.ok) {
@@ -92,7 +97,7 @@ export async function crawl(options: CrawlOptions): Promise<{ listings: Listings
   for (const r of results) if (r.reason) byReason[r.reason] = (byReason[r.reason] ?? 0) + 1;
   const generatedAt = isoSeconds(now());
   return {
-    listings: { schemaVersion: 1, generatedAt, plugins },
+    index: { schemaVersion: 1, generatedAt, mediaPolicy: MEDIA_POLICY, plugins },
     report: {
       generatedAt,
       summary: {
@@ -125,39 +130,37 @@ async function main(): Promise<void> {
     sources: { type: 'string' },
     previous: { type: 'string' },
     cleared: { type: 'string' },
-    pending: { type: 'string' },
     denylist: { type: 'string' },
     out: { type: 'string' },
     report: { type: 'string' },
   });
   if (!values.sources || !values.out || !values.report) {
-    console.error('usage: crawl.ts --sources <file> [--pending <pending-sources.jsonl>] [--denylist <file>] [--previous <index.json>] [--cleared <file>] --out <listings.json> --report <report.json>');
+    console.error('usage: crawl.ts --sources <file> [--denylist <file>] [--cleared <file>] [--previous <index.json>] --out <index.json> --report <report.json>');
     process.exit(2);
   }
-  const clearedPath = values.cleared ?? join(dirname(values.sources), 'cleared.txt');
-  const denylistPath = values.denylist ?? join(dirname(values.sources), 'denylist.txt');
-  const readIfExists = (path: string | undefined) => (path && existsSync(path) ? readFileSync(path, 'utf8') : '');
-  const merged = mergePending(readFileSync(values.sources, 'utf8'), readIfExists(values.pending), readIfExists(denylistPath));
+  const readIfExists = (path: string) => (existsSync(path) ? readFileSync(path, 'utf8') : '');
   const previous = values.previous && existsSync(values.previous) ? JSON.parse(readFileSync(values.previous, 'utf8')) : null;
-  const { listings, report } = await crawl({
-    sourcesText: merged.text,
-    clearedText: existsSync(clearedPath) ? readFileSync(clearedPath, 'utf8') : '',
+  const { index, report } = await crawl({
+    sourcesText: readFileSync(values.sources, 'utf8'),
+    clearedText: readIfExists(values.cleared ?? join(dirname(values.sources), 'cleared.txt')),
+    denylistText: readIfExists(values.denylist ?? join(dirname(values.sources), 'denylist.txt')),
     previous,
     deps: realDeps(),
   });
   writeJsonAtomic(values.report, report);
   const { summary } = report;
   const outage = isTransientOutage(report);
-  if (!outage) writeJsonAtomic(values.out, listings);
-  if (merged.added) console.log(`merged ${merged.added} pending sources`);
+  if (!outage) writeJsonAtomic(values.out, index);
   console.log(`crawled ${summary.sources} sources: ${summary.listed} listed, ${summary.rejected} rejected`);
-  for (const r of report.results) {
-    console.log(`  ${r.status === 'listed' ? 'listed  ' : 'rejected'} ${r.source}${r.reason ? `  ${r.reason}: ${r.detail}` : `  tier=${r.tier} cleared=${r.cleared}${r.flags?.length ? ` flags=${r.flags.join(',')}` : ''}`}`);
-  }
+  for (const r of report.results) console.log(`  ${describeResult(r)}`);
   if (outage) {
     console.error(`nothing listed because of rate limiting or network errors; left ${values.out} untouched`);
     process.exit(1);
   }
+}
+
+export function describeResult(r: CrawlResultEntry): string {
+  return `${r.status === 'listed' ? 'listed  ' : 'rejected'} ${r.source}${r.reason ? `  ${r.reason}: ${r.detail}` : `  tier=${r.tier} cleared=${r.cleared}${r.flags?.length ? ` flags=${r.flags.join(',')}` : ''}`}`;
 }
 
 if (import.meta.main) await main();

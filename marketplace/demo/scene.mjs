@@ -1,29 +1,23 @@
-// Browse the index, inspect a low and a high access listing, add one through Buzz's own review,
-// upvote it, then turn anonymous sharing off. Record with --mocks demo/mocks.mjs.
+// Browse the index, inspect a low and a high access listing, then add one through Buzz's own review.
+// Record with --mocks demo/mocks.mjs.
 export default async function ({ page, demo }) {
   const card = (name) => page.locator(".bm-card").filter({ hasText: name }).first();
   const sort = (name) => page.getByRole("group", { name: "Sort" }).getByRole("button", { name, exact: true });
   const back = page.getByRole("button", { name: "← All plugins" });
   await demo.captionPosition("bottom");
-  await demo.title("Community Marketplace", "Open Buzz plugins from public repositories, ranked by installs and upvotes");
+  await demo.title("Community Marketplace", "Open Buzz plugins from public repositories");
 
   demo.chapter("Browse");
   await demo.openPage("Community Marketplace");
-  await demo.caption("Every card shows the author, installs, upvotes and whether anyone reviewed it", 2600);
+  await demo.caption("Every card shows the author, stars, last update and whether anyone reviewed it", 2600);
   demo.poster();
   await demo.hover(card("Counter"), 700);
   await demo.hideCaption();
 
-  demo.chapter("Trending, Hot and Most upvoted");
-  await demo.click(sort("Trending"), { after: 800 });
-  await demo.caption("Trending shows plugins gaining installs today", 1800);
-  await demo.click(sort("Hot"), { after: 800 });
-  await demo.caption("Hot favors recent installs. Uncleared plugins stay out of both", 2200);
-  await demo.hideCaption();
-  await demo.click(sort("Most upvoted"), { after: 800 });
-  await demo.caption("Most upvoted counts upvotes from people who added the plugin", 2200);
-  await demo.hideCaption();
-  await demo.click(sort("All time"), { after: 700 });
+  demo.chapter("Sort");
+  await demo.click(sort("Most stars"), { after: 900 });
+  await demo.click(sort("A–Z"), { after: 900 });
+  await demo.click(sort("Recently updated"), { after: 700 });
 
   demo.chapter("Search");
   await demo.type(page.getByRole("searchbox", { name: "Search plugins" }), "counter", { delay: 70 });
@@ -65,19 +59,5 @@ export default async function ({ page, demo }) {
   await demo.hover(page.getByRole("status", { name: "Added to Buzz" }), 900);
   await demo.hideCaption();
 
-  demo.chapter("Upvote");
-  const upvote = page.getByRole("button", { name: /▲ Upvote/ });
-  await demo.caption("Once you've added it from here, you can upvote it", 2000);
-  await demo.click(upvote, { after: 1200 });
-  await demo.caption("It counts at once, with the same random ID as the install", 2200);
-  await demo.hideCaption();
-
-  demo.chapter("Anonymous counts");
-  const toggle = page.getByRole("switch", { name: "Share anonymous install counts and upvotes" });
-  await demo.caption("Public repositories only, with a random ID that stays on this device", 2200);
-  await demo.hover(toggle, 800);
-  await demo.click(toggle, { after: 900 });
-  await demo.caption("Turn it off and nothing is sent", 2200);
-  await demo.hideCaption();
   await demo.pause(600);
 }

@@ -23,7 +23,8 @@ export type ReasonCode =
   | 'manifest-id-invalid'
   | 'listing-invalid'
   | 'slug-collision'
-  | 'duplicate-source';
+  | 'duplicate-source'
+  | 'denylisted';
 
 export interface Failure {
   ok: false;

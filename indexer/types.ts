@@ -76,36 +76,10 @@ export interface Listing {
   updatedAt: string;
 }
 
-export interface Installs {
-  allTime: number;
-  last24h: number;
-  last7d: number;
-}
-
-export interface IndexPlugin extends Listing {
-  installs: Installs;
-  upvotes: number;
-}
-
-export interface Rankings {
-  allTime: string[];
-  trending: string[];
-  hot: string[];
-  mostUpvoted: string[];
-}
-
 export interface IndexFile {
   schemaVersion: 1;
   generatedAt: string;
-  collectionStartedAt: string;
   mediaPolicy: string;
-  plugins: IndexPlugin[];
-  rankings: Rankings;
-}
-
-export interface ListingsFile {
-  schemaVersion: 1;
-  generatedAt: string;
   plugins: Listing[];
 }
 

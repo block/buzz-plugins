@@ -3,17 +3,16 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Index of publicly fetchable Buzz plugins, ranked by anonymous install pings and upvotes",
+  "packageManager": "pnpm@11.8.0",
+  "description": "Index of publicly fetchable Buzz plugins, crawled from sources.txt and published as a static index.json",
   "engines": {
     "node": ">=24"
   },
   "scripts": {
-    "test": "node --experimental-strip-types --test \"indexer/*.test.ts\" \"collector/*.test.ts\"",
-    "crawl": "node --experimental-strip-types indexer/crawl.ts --sources sources.txt --pending .data/pending-sources.jsonl --previous .data/index.json --out .data/listings.json --report .data/crawl-report.json",
-    "rank": "node --experimental-strip-types collector/rank.ts --listings .data/listings.json --store .data/installs.jsonl --votes .data/installs.votes.jsonl --denylist denylist.txt --out .data/index.json",
-    "serve": "node --experimental-strip-types collector/server.ts --port 8787 --store .data/installs.jsonl --index .data/index.json --denylist denylist.txt",
+    "test": "node --experimental-strip-types --test \"indexer/*.test.ts\"",
+    "crawl": "node --experimental-strip-types indexer/crawl.ts --sources sources.txt --previous .data/index.json --out .data/index.json --report .data/crawl-report.json",
+    "check-sources": "node --experimental-strip-types indexer/check-sources.ts",
     "add": "node --experimental-strip-types indexer/add.ts",
-    "seed": "node --experimental-strip-types collector/seed-pings.ts",
     "validate": "node --experimental-strip-types indexer/validate.ts"
   },
   "dependencies": {

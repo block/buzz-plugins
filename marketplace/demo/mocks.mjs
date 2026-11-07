@@ -8,23 +8,11 @@ import fixture from "./index.demo.json";
 const demoIndex = { ...fixture, plugins: fixture.plugins.map((plugin) => ({ ...plugin, demo: { screenshots: [] } })) };
 
 const ok = (status, body) => ({ status, headers: {}, body: JSON.stringify(body) });
-const pings = [];
-window.__demoPings = pings;
-const votes = [];
-window.__demoVotes = votes;
 
-function hostRequest({ url, method = "GET", body }) {
-  if (url === "https://plugins.buzz.example/v1/index.json") return ok(200, demoIndex);
+function hostRequest({ url }) {
+  if (url === "https://raw.githubusercontent.com/block/buzz-plugins/index/index.json") return ok(200, demoIndex);
   const repo = /^https:\/\/api\.github\.com\/repos\/([^/]+)\/([^/]+)$/.exec(url);
   if (repo) return ok(200, { full_name: `${repo[1]}/${repo[2]}`, private: false });
-  if (url === "https://plugins.buzz.example/v1/installs" && method === "POST") {
-    pings.push(JSON.parse(body));
-    return ok(202, {});
-  }
-  if (url === "https://plugins.buzz.example/v1/votes" && method === "POST") {
-    votes.push(JSON.parse(body));
-    return ok(202, {});
-  }
   throw new Error("Not available in the demo");
 }
 

@@ -33,7 +33,13 @@ If your plugin needs network access, files, commands or agent hooks, declare the
 ## List it
 
 1. Commit `manifest.json` and `plugin.js` (and `buzz-listing.yaml` if you kept it) and push to a public GitHub repository, on a branch or tag.
-2. In Buzz, open the Community Marketplace and choose **Add your plugin**. Enter `owner/repo`, or `owner/repo/path/to/plugin` for a subfolder, and an optional branch or tag.
-3. The marketplace checks that the repository is public and has a built plugin, then submits it. It shows up after the next index update.
+2. Add a line to [`sources.txt`](https://github.com/block/buzz-plugins/blob/main/sources.txt) in a pull request, or open the [**List a plugin**](https://github.com/block/buzz-plugins/issues/new?template=list-plugin.yml) issue form:
+
+   ```
+   https://github.com/<owner>/<repo> <branch or tag> [path/to/plugin]
+   ```
+
+   In Buzz, **Add your plugin** in the Community Marketplace checks your repository first and opens either one with the line filled in.
+3. A check comments on your pull request or issue. Once a maintainer merges the line, the plugin shows up after the next index publish.
 
 Each time the index updates it pins your branch or tag's newest commit. Listings are marked as unreviewed community content until a maintainer clears them.

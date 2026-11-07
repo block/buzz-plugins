@@ -1,13 +1,12 @@
 import { readFileSync } from 'node:fs';
-import { validateIndex, validateListings } from './schema.ts';
+import { validateIndex } from './schema.ts';
 
 const file = process.argv[2];
 if (!file) {
-  console.error('usage: validate.ts <index.json|listings.json>');
+  console.error('usage: validate.ts <index.json>');
   process.exit(2);
 }
-const data = JSON.parse(readFileSync(file, 'utf8'));
-const errors = 'rankings' in data ? validateIndex(data) : validateListings(data);
+const errors = validateIndex(JSON.parse(readFileSync(file, 'utf8')));
 if (errors.length > 0) {
   for (const e of errors) console.error(e);
   process.exit(1);

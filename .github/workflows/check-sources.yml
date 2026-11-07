@@ -1,0 +1,72 @@
+name: Check sources
+
+# Runs with the base branch's code only. The pull request's sources.txt and the issue body
+# are read as data, never executed, so pull_request_target can comment on fork PRs safely.
+on:
+  pull_request_target:
+    paths:
+      - sources.txt
+  issues:
+    types: [opened, edited]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: check-sources-${{ github.event.pull_request.number || github.event.issue.number }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    if: github.event_name == 'pull_request_target' || contains(github.event.issue.labels.*.name, 'list-plugin')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - run: corepack enable && pnpm install --frozen-lockfile
+
+      - name: Read the proposed sources
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: |
+          mkdir -p .data
+          if [ "$GITHUB_EVENT_NAME" = pull_request_target ]; then
+            gh api -H "Accept: application/vnd.github.raw" "repos/$HEAD_REPO/contents/sources.txt?ref=$HEAD_SHA" > .data/candidate.txt
+            echo "CHECK_INPUT=candidate=.data/candidate.txt" >> "$GITHUB_ENV"
+          else
+            printf '%s' "$ISSUE_BODY" > .data/issue.md
+            echo "CHECK_INPUT=issue=.data/issue.md" >> "$GITHUB_ENV"
+          fi
+
+      - name: Check
+        id: check
+        continue-on-error: true
+        run: node --experimental-strip-types indexer/check-sources.ts --base sources.txt "--$CHECK_INPUT" --report .data/report.md
+
+      - name: Comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+          OUTCOME: ${{ steps.check.outcome }}
+        run: |
+          kind=$([ "$GITHUB_EVENT_NAME" = pull_request_target ] && echo pr || echo issue)
+          if [ "$OUTCOME" = failure ]; then
+            gh "$kind" comment "$NUMBER" -R "$GITHUB_REPOSITORY" --body-file .data/report.md --edit-last --create-if-none
+            exit 1
+          fi
+          if [ "$kind" = issue ]; then
+            gh issue comment "$NUMBER" -R "$GITHUB_REPOSITORY" --body-file .data/report.md --edit-last --create-if-none
+          else
+            gh pr comment "$NUMBER" -R "$GITHUB_REPOSITORY" --body-file .data/report.md --edit-last 2>/dev/null || true
+          fi

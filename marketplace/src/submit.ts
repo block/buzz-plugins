@@ -1,14 +1,11 @@
 import type { Context } from "@buzz/author";
-import { INDEX_ORIGIN } from "./catalog";
+import { LISTING_REPOSITORY } from "./catalog";
 
 type Host = Context["host"];
 
 export type SourceInput = Readonly<{ owner: string; repo: string; ref?: string; path: string }>;
 export type CheckedSource = Readonly<{ owner: string; repo: string; ref: string; path: string; id: string; name: string; description: string }>;
 export type CheckResult = { ok: true; source: CheckedSource } | { ok: false; message: string };
-export type SubmitResult =
-  | { ok: true; status: "queued" | "listed"; slug?: string; name: string }
-  | { ok: false; message: string };
 
 const NAME = /^[A-Za-z0-9_.-]{1,100}$/;
 const SEGMENT = /^[A-Za-z0-9._-]+$/;
@@ -95,30 +92,20 @@ export async function checkSource(host: Host, input: SourceInput): Promise<Check
   }
 }
 
-export async function submitSource(host: Host, source: CheckedSource): Promise<SubmitResult> {
-  try {
-    const response = await host.request({
-      url: `${INDEX_ORIGIN}/v1/sources`,
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ repository: `${source.owner}/${source.repo}`, ref: source.ref, ...(source.path ? { path: source.path } : {}) }),
-      timeoutMs: 60000,
-    });
-    if (response.status === 429) return { ok: false, message: "You've submitted a lot today. Try again tomorrow." };
-    let body: { status?: unknown; listing?: { slug?: unknown; name?: unknown }; detail?: unknown } = {};
-    try {
-      body = JSON.parse(response.body) as typeof body;
-    } catch {
-      /* a non-JSON answer is reported by status below */
-    }
-    if (response.status === 200 && (body.status === "queued" || body.status === "listed")) {
-      const slug = typeof body.listing?.slug === "string" ? body.listing.slug : undefined;
-      const name = typeof body.listing?.name === "string" ? body.listing.name : source.name;
-      return { ok: true, status: body.status, slug, name };
-    }
-    if (response.status === 422 && typeof body.detail === "string") return { ok: false, message: `The index couldn't list it: ${body.detail}` };
-    return { ok: false, message: `The index didn't accept it (HTTP ${response.status}). Try again later.` };
-  } catch {
-    return { ok: false, message: "Couldn't reach the index. Check your connection and try again." };
-  }
+export const sourceLine = (source: Pick<CheckedSource, "owner" | "repo" | "ref" | "path">) =>
+  `https://github.com/${source.owner}/${source.repo} ${source.ref}${source.path ? ` ${source.path}` : ""}`;
+
+export const sourceKey = (source: Pick<SourceInput, "owner" | "repo" | "path">) =>
+  `github.com/${source.owner}/${source.repo}${source.path ? `/${source.path}` : ""}`;
+
+export function listingLinks(source: CheckedSource, repository = LISTING_REPOSITORY) {
+  const issue = new URLSearchParams({
+    template: "list-plugin.yml",
+    title: `List: ${source.name}`,
+    source: sourceLine(source),
+  });
+  return {
+    pullRequest: `https://github.com/${repository}/edit/main/sources.txt`,
+    issue: `https://github.com/${repository}/issues/new?${issue}`,
+  };
 }

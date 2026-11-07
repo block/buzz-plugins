@@ -1,0 +1,79 @@
+name: Publish index
+
+on:
+  schedule:
+    - cron: "23 */3 * * *"
+  push:
+    branches: [main]
+    paths:
+      - sources.txt
+      - denylist.txt
+      - cleared.txt
+      - indexer/**
+  workflow_dispatch:
+
+concurrency:
+  group: publish-index
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - run: corepack enable && pnpm install --frozen-lockfile
+
+      - name: Check out the index branch
+        run: |
+          if git ls-remote --exit-code --heads origin index >/dev/null; then
+            git fetch --depth=1 origin index
+            git worktree add publish FETCH_HEAD
+            git -C publish switch -c index
+          else
+            git worktree add --orphan -b index publish
+          fi
+          mkdir -p .data
+          if [ -f publish/index.json ]; then cp publish/index.json .data/previous.json; fi
+
+      - name: Crawl
+        run: >-
+          node --experimental-strip-types indexer/crawl.ts
+          --sources sources.txt --denylist denylist.txt --cleared cleared.txt
+          --previous .data/previous.json --out .data/index.json --report .data/crawl-report.json
+
+      - run: node --experimental-strip-types indexer/validate.ts .data/index.json
+
+      - name: Publish
+        run: |
+          strip='del(.generatedAt) | .plugins |= map(del(.audit.checkedAt))'
+          if [ -f publish/index.json ] && diff -q <(jq -S "$strip" publish/index.json) <(jq -S "$strip" .data/index.json) >/dev/null; then
+            echo "Listings unchanged; nothing to publish."
+            exit 0
+          fi
+          cp .data/index.json .data/crawl-report.json publish/
+          cd publish
+          git add index.json crawl-report.json
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -m "Index from ${GITHUB_SHA::7}"
+          git push origin index
+
+      - name: Summary
+        if: always()
+        run: |
+          if [ -f .data/crawl-report.json ]; then
+            {
+              echo "### Crawl"
+              jq -r '.summary | "\(.listed) listed, \(.rejected) rejected of \(.sources) sources"' .data/crawl-report.json
+              echo
+              jq -r '.results[] | select(.status == "rejected") | "- `\(.source)`: \(.reason) \(.detail // "")"' .data/crawl-report.json
+              echo
+              echo "Published at https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/index/index.json"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi

@@ -5,16 +5,15 @@ import {
   type Index,
   type Listing,
   loadIndex,
-  ranked,
   search,
   type Sort,
+  sorted,
   sorts,
   tierLabels,
 } from "./catalog";
 import { activePluginIds, type InstallationStatus, type InstallResult, type PluginsCapability, sourceOf } from "./install";
 import { createMarkdown } from "./markdown";
-import { canVote, hasReported, hasUpvoted, reportInstall, sendVote, setShareEnabled, shareEnabled } from "./ping";
-import { type CheckedSource, checkSource, describeSource, parseSourceInput, submitSource, type SubmitResult } from "./submit";
+import { type CheckedSource, checkSource, describeSource, listingLinks, parseSourceInput, sourceKey, sourceLine } from "./submit";
 
 type ReactLike = Context["react"];
 type Phase = "review" | InstallResult | "failed";
@@ -34,18 +33,8 @@ const https = (url: string | undefined) => (url?.startsWith("https://") ? url : 
 export const listingLink = (slug: string) =>
   `buzz://plugin?id=${PLUGIN_ID}&page=${PAGE_ID}&route.slug=${encodeURIComponent(slug)}`;
 
-const day = (iso: string) => new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
-export const addedBy = (count: number) => `Added by ${count.toLocaleString("en-US")} ${count === 1 ? "person" : "people"}`;
-
-export function installLine(listing: Listing, sort: Sort): string | null {
-  const { allTime, last24h, last7d } = listing.installs;
-  if (!allTime) return null;
-  if (sort === "trending" && last24h) return `${addedBy(allTime)} · +${last24h.toLocaleString("en-US")} today`;
-  if (sort === "hot" && last7d) return `${addedBy(allTime)} · +${last7d.toLocaleString("en-US")} this week`;
-  return addedBy(allTime);
-}
-
-export const upvoteLabel = (count: number) => `${count.toLocaleString("en-US")} ${count === 1 ? "upvote" : "upvotes"}`;
+export const day = (iso: string) => new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+export const starLabel = (count: number) => `${count.toLocaleString("en-US")} ${count === 1 ? "star" : "stars"} on GitHub`;
 
 export const trustLabel = (listing: Listing) => (listing.official ? "Official" : "Community · not reviewed");
 export const cardTrustLabel = (listing: Listing) => (listing.official ? "Official" : "Unreviewed");
@@ -77,8 +66,6 @@ export function createViews(ctx: Context, capability: PluginsCapability | undefi
   };
   const installedState = () => active;
 
-  let indexedKeys = new Set<string>();
-
   // Kept outside the page so a card's Add to Buzz can hand off to the listing's page.
   const phases = new Map<string, Phase>();
   const phaseListeners = new Set<() => void>();
@@ -97,8 +84,6 @@ export function createViews(ctx: Context, capability: PluginsCapability | undefi
     try {
       const result = await capability.requestInstall(sourceOf(listing));
       setPhase(listing.slug, result);
-      // Only a first install counts; updates, cancellations and failures are not adoption.
-      if (result === "installed") void reportInstall(ctx.host, listing, indexedKeys.has(listing.key)).then(notifyVotes);
     } catch {
       setPhase(listing.slug, "failed");
     }
@@ -131,41 +116,6 @@ export function createViews(ctx: Context, capability: PluginsCapability | undefi
     const active = useInstalled(listing);
     if (capability?.getInstallationStatus) return status;
     return active ? "installed" : "absent";
-  };
-
-  const voteOverrides = new Map<string, boolean>();
-  const voteBaseline = new Map<string, boolean>();
-  const votesPending = new Set<string>();
-  const voteListeners = new Set<() => void>();
-  let voteVersion = 0;
-  function notifyVotes() {
-    voteVersion++;
-    for (const listener of voteListeners) listener();
-  }
-  const subscribeVotes = (listener: () => void) => {
-    voteListeners.add(listener);
-    return () => voteListeners.delete(listener);
-  };
-  const baseline = (key: string) => {
-    if (!voteBaseline.has(key)) voteBaseline.set(key, hasUpvoted(key));
-    return voteBaseline.get(key)!;
-  };
-  const useVote = (listing: Listing) => {
-    useSyncExternalStore(subscribeVotes, () => voteVersion);
-    const voted = voteOverrides.get(listing.key) ?? baseline(listing.key);
-    const count = Math.max(0, (listing.upvotes ?? 0) + Number(voted) - Number(baseline(listing.key)));
-    return { voted, count, pending: votesPending.has(listing.key) };
-  };
-  const toggleVote = (listing: Listing, voted: boolean) => {
-    if (votesPending.has(listing.key)) return;
-    voteOverrides.set(listing.key, !voted);
-    votesPending.add(listing.key);
-    notifyVotes();
-    void sendVote(ctx.host, listing, !voted).then((ok) => {
-      if (!ok) voteOverrides.set(listing.key, voted);
-      votesPending.delete(listing.key);
-      notifyVotes();
-    });
   };
 
   const open = (slug: string | null) =>
@@ -456,27 +406,25 @@ export function createViews(ctx: Context, capability: PluginsCapability | undefi
     | { step: "invalid" }
     | { step: "checking" }
     | { step: "rejected"; message: string }
-    | { step: "submitting"; source: CheckedSource }
-    | { step: "failed"; source: CheckedSource; message: string }
-    | { step: "done"; source: CheckedSource; result: Extract<SubmitResult, { ok: true }> };
+    | { step: "ready"; source: CheckedSource; listed?: Listing };
 
-  function AddPlugin({ onClose }: { onClose(): void }) {
+  function AddPlugin({ index, onClose }: { index: Index; onClose(): void }) {
     const [repository, setRepository] = useState("");
     const [ref, setRef] = useState("");
     const [state, setState] = useState<AddState>({ step: "idle" });
-    const busy = state.step === "checking" || state.step === "submitting";
+    const busy = state.step === "checking";
     const run = async () => {
       const input = parseSourceInput(repository, ref);
       if (!input) return setState({ step: "invalid" });
       setState({ step: "checking" });
       const checked = await checkSource(ctx.host, input);
       if (!checked.ok) return setState({ step: "rejected", message: checked.message });
-      setState({ step: "submitting", source: checked.source });
-      const result = await submitSource(ctx.host, checked.source);
-      setState(result.ok ? { step: "done", source: checked.source, result } : { step: "failed", source: checked.source, message: result.message });
+      const key = sourceKey(checked.source).toLowerCase();
+      const listed = index.plugins.find((plugin) => plugin.key.toLowerCase() === key);
+      setState({ step: "ready", source: checked.source, listed });
     };
-    const found = "source" in state ? state.source : null;
-    const listedSlug = state.step === "done" && state.result.status === "listed" ? state.result.slug : undefined;
+    const found = state.step === "ready" ? state.source : null;
+    const links = found ? listingLinks(found) : null;
     return (
       <Dialog label="Add your plugin" onClose={onClose}>
         <h2>Add your plugin</h2>
@@ -535,14 +483,15 @@ export function createViews(ctx: Context, capability: PluginsCapability | undefi
                 {found.description ? <span className="bm-check-description">{found.description}</span> : null}
               </div>
             ) : null}
-            {state.step === "submitting" ? <p>Found it. Sending it to the index…</p> : null}
-            {state.step === "failed" ? <p className="bm-check-error">{state.message}</p> : null}
-            {state.step === "done" ? (
-              <p className="bm-check-success">
-                {state.result.status === "listed"
-                  ? `${state.result.name} is already listed.`
-                  : `Submitted. ${state.result.name} will appear after the next index update, usually within an hour.`}
-              </p>
+            {state.step === "ready" && state.listed ? (
+              <p className="bm-check-success">{state.listed.name} is already listed.</p>
+            ) : found ? (
+              <>
+                <p className="bm-check-success">
+                  It can be listed. Add this line to <code>sources.txt</code> in a pull request, or ask for it in an issue:
+                </p>
+                <Copy value={sourceLine(found)} />
+              </>
             ) : null}
           </div>
           <p className="bm-note">
@@ -550,68 +499,40 @@ export function createViews(ctx: Context, capability: PluginsCapability | undefi
           </p>
           <div className="bm-actions">
             <button type="button" className="bm-button" data-variant="quiet" onClick={onClose}>
-              {state.step === "done" ? "Done" : "Cancel"}
+              {found ? "Done" : "Cancel"}
             </button>
-            {listedSlug ? (
+            {state.step === "ready" && state.listed ? (
               <button
                 type="button"
                 className="bm-button"
                 onClick={() => {
-                  void open(listedSlug);
+                  void open(state.listed!.slug);
                   onClose();
                 }}
               >
                 View listing
               </button>
-            ) : state.step !== "done" ? (
+            ) : links ? (
+              <>
+                <a className="bm-button" data-variant="quiet" href={links.issue} target="_blank" rel="noreferrer">
+                  Request in an issue
+                </a>
+                <a className="bm-button" href={links.pullRequest} target="_blank" rel="noreferrer">
+                  Open a pull request
+                </a>
+              </>
+            ) : (
               <button type="submit" className="bm-button" disabled={busy || !repository.trim()}>
-                {busy ? "Checking…" : "Check and submit"}
+                {busy ? "Checking…" : "Check"}
               </button>
-            ) : null}
+            )}
           </div>
         </form>
       </Dialog>
     );
   }
 
-  function CardVotes({ listing }: { listing: Listing }) {
-    const { count } = useVote(listing);
-    return count ? (
-      <span className="bm-card-votes" title={upvoteLabel(count)} aria-label={upvoteLabel(count)}>
-        ▲ {count.toLocaleString("en-US")}
-      </span>
-    ) : null;
-  }
-
-  function UpvoteButton({ listing }: { listing: Listing }) {
-    const { voted, count, pending } = useVote(listing);
-    const installed = useInstallationStatus(listing) === "installed";
-    const reason = !installed || !hasReported(listing.key)
-      ? "Add it to Buzz from here to upvote it."
-      : !shareEnabled()
-        ? "Turn on anonymous sharing below to upvote."
-        : null;
-    const enabled = !reason && canVote(listing);
-    return (
-      <div className="bm-upvote">
-        <button
-          className="bm-button"
-          data-variant="quiet"
-          data-size="sm"
-          aria-pressed={voted}
-          disabled={!enabled || pending}
-          onClick={() => toggleVote(listing, voted)}
-        >
-          {voted ? "▲ Upvoted" : "▲ Upvote"}
-        </button>
-        <span className="bm-note">{count ? upvoteLabel(count) : "No upvotes yet"}</span>
-        {reason ? <span className="bm-note">{reason}</span> : null}
-      </div>
-    );
-  }
-
-  function Card({ listing, sort, onManual }: { listing: Listing; sort: Sort; onManual(listing: Listing): void }) {
-    const line = installLine(listing, sort);
+  function Card({ listing, onManual }: { listing: Listing; onManual(listing: Listing): void }) {
     return (
       <div className="bm-card" role="button" tabIndex={0} onClick={() => open(listing.slug)} onKeyDown={(e) => openOnKey(e, listing.slug)}>
         <div className="bm-media">
@@ -624,8 +545,12 @@ export function createViews(ctx: Context, capability: PluginsCapability | undefi
           </div>
           <span className="bm-card-tagline">{listing.tagline}</span>
           <div className="bm-card-row">
-            <span className="bm-card-installs">{line ?? "New"}</span>
-            <CardVotes listing={listing} />
+            <span className="bm-card-installs">{listing.updatedAt ? `Updated ${day(listing.updatedAt)}` : "\u00a0"}</span>
+            {listing.stars ? (
+              <span className="bm-card-stars" title={starLabel(listing.stars)} aria-label={starLabel(listing.stars)}>
+                ★ {listing.stars.toLocaleString("en-US")}
+              </span>
+            ) : null}
           </div>
           <div className="bm-card-row bm-card-meta">
             <span className="bm-card-author">by {listing.author.github}</span>
@@ -643,8 +568,8 @@ export function createViews(ctx: Context, capability: PluginsCapability | undefi
   function Browse({ index, onManual, onAdd }: { index: Index; onManual(listing: Listing): void; onAdd(): void }) {
     const [query, setQuery] = useState("");
     const [category, setCategory] = useState<string | null>(null);
-    const [sort, setSort] = useState<Sort>("allTime");
-    const visible = useMemo(() => search(ranked(index, sort), query, category), [index, sort, query, category]);
+    const [sort, setSort] = useState<Sort>("updated");
+    const visible = useMemo(() => search(sorted(index, sort), query, category), [index, sort, query, category]);
     const present = Object.keys(categories).filter((slug) => index.plugins.some((plugin) => plugin.category === slug));
     const heading =
       query || category ? `${visible.length} ${visible.length === 1 ? "plugin" : "plugins"}` : sorts.find((entry) => entry.id === sort)?.label;
@@ -653,7 +578,7 @@ export function createViews(ctx: Context, capability: PluginsCapability | undefi
         <header className="bm-header">
           <div>
             <h1 className="bm-title">Community Marketplace</h1>
-            <p className="bm-subtitle">Open plugins from public Git repositories, ranked by how many people add and upvote them.</p>
+            <p className="bm-subtitle">Open plugins from public Git repositories.</p>
           </div>
           <div className="bm-header-actions">
             <label className="bm-search">
@@ -694,19 +619,11 @@ export function createViews(ctx: Context, capability: PluginsCapability | undefi
         {visible.length ? (
           <div className="bm-grid">
             {visible.map((listing) => (
-              <Card key={listing.slug} listing={listing} sort={sort} onManual={onManual} />
+              <Card key={listing.slug} listing={listing} onManual={onManual} />
             ))}
           </div>
         ) : (
-          <p className="bm-empty">
-            {query || category
-              ? "No plugins match."
-              : sort === "allTime"
-                ? "Nothing is listed yet."
-                : sort === "mostUpvoted"
-                  ? "Nothing has upvotes yet. People who add a plugin from here can upvote it."
-                  : "Nothing is ranked here yet. Trending and Hot only include reviewed plugins with a few installs."}
-          </p>
+          <p className="bm-empty">{query || category ? "No plugins match." : "Nothing is listed yet."}</p>
         )}
       </>
     );
@@ -737,7 +654,7 @@ export function createViews(ctx: Context, capability: PluginsCapability | undefi
         )}
         {audit.accessChanged ? <span className="bm-note bm-warning">What it can access changed since the last index.</span> : null}
         {!audit.cleared ? (
-          <span className="bm-note bm-warning">A maintainer hasn't cleared this version, so it isn't ranked in Trending or Hot.</span>
+          <span className="bm-note bm-warning">A maintainer hasn't cleared this version yet.</span>
         ) : null}
         <span className="bm-note">
           {listing.official
@@ -791,7 +708,6 @@ export function createViews(ctx: Context, capability: PluginsCapability | undefi
                 <AddButton listing={listing} here onManual={() => onManual(listing)} />
                 <AddedBadge listing={listing} />
               </div>
-              <UpvoteButton listing={listing} />
               {video ? (
                 <a href={video} target="_blank" rel="noreferrer">
                   Watch the demo video
@@ -830,16 +746,10 @@ export function createViews(ctx: Context, capability: PluginsCapability | undefi
                 <dd>{listing.author.github}</dd>
                 <dt>Category</dt>
                 <dd>{categories[listing.category] ?? listing.category}</dd>
-                {listing.installs.allTime ? (
+                {listing.stars ? (
                   <>
-                    <dt>Installs</dt>
-                    <dd>{addedBy(listing.installs.allTime)}</dd>
-                  </>
-                ) : null}
-                {listing.upvotes ? (
-                  <>
-                    <dt>Upvotes</dt>
-                    <dd>{listing.upvotes.toLocaleString("en-US")}</dd>
+                    <dt>Stars</dt>
+                    <dd>{listing.stars.toLocaleString("en-US")}</dd>
                   </>
                 ) : null}
                 <dt>Version</dt>
@@ -865,25 +775,6 @@ export function createViews(ctx: Context, capability: PluginsCapability | undefi
     );
   }
 
-  function ShareToggle() {
-    const [on, setOn] = useState(shareEnabled);
-    return (
-      <label className="bm-toggle">
-        <input
-          type="checkbox"
-          role="switch"
-          checked={on}
-          onChange={(event) => {
-            setShareEnabled(event.target.checked);
-            setOn(event.target.checked);
-            notifyVotes();
-          }}
-        />
-        Share anonymous install counts and upvotes
-      </label>
-    );
-  }
-
   return function MarketplacePage({ navigation }: { navigation?: { target: unknown } }) {
     const [state, setState] = useState<{ index: Index; live: boolean } | null>(null);
     const [manual, setManual] = useState<Listing | null>(null);
@@ -891,9 +782,7 @@ export function createViews(ctx: Context, capability: PluginsCapability | undefi
     useEffect(() => {
       let current = true;
       void loadIndex(ctx.host).then((result) => {
-        if (!current) return;
-        indexedKeys = new Set(result.index.plugins.map((plugin) => plugin.key));
-        setState(result);
+        if (current) setState(result);
       });
       return () => {
         current = false;
@@ -913,18 +802,13 @@ export function createViews(ctx: Context, capability: PluginsCapability | undefi
           )}
           {state ? (
             <footer className="bm-footer">
-              <ShareToggle />
-              <p className="bm-note">
-                Counts are people who added a plugin from here, one per device, since {day(state.index.collectionStartedAt)} and updated{" "}
-                {day(state.index.generatedAt)}. We send the plugin's address and a random ID that stays on this device, only for public
-                repositories. An upvote sends the same random ID and only counts if you added the plugin from here. Earlier installs and plugins added elsewhere aren't counted.
-              </p>
+              <p className="bm-note">Index updated {day(state.index.generatedAt)}. Nothing about what you install is sent anywhere.</p>
               {!state.live ? <p className="bm-note">Showing the index built into this version. The live one couldn't be reached.</p> : null}
             </footer>
           ) : null}
         </div>
         {manual ? <ManualInstall listing={manual} onClose={() => setManual(null)} /> : null}
-        {adding ? <AddPlugin onClose={() => setAdding(false)} /> : null}
+        {adding && state ? <AddPlugin index={state.index} onClose={() => setAdding(false)} /> : null}
       </div>
     );
   };

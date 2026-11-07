@@ -38,9 +38,7 @@ export const styles = `
 .bm-card-tagline { color: var(--text-subtle); font-size: var(--text-body-sm); line-height: var(--text-body-sm--line-height);
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: calc(2 * var(--text-body-sm--line-height)); }
 .bm-card-installs { color: var(--text-metadata); font-size: var(--text-caption); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bm-card-votes { flex: none; color: var(--text-metadata); font-size: var(--text-caption); font-weight: var(--font-weight-semibold); font-variant-numeric: tabular-nums; }
-.bm-upvote { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
-.bm-upvote .bm-button[aria-pressed="true"] { color: var(--text-standard); background: var(--accent-overlay-soft); }
+.bm-card-stars { flex: none; color: var(--text-metadata); font-size: var(--text-caption); font-weight: var(--font-weight-semibold); font-variant-numeric: tabular-nums; }
 .bm-card-meta { margin-top: var(--space-2); display: flex; gap: var(--space-2); align-items: center; color: var(--text-metadata); font-size: var(--text-caption); }
 .bm-badge { display: inline-flex; align-items: center; height: 20px; padding: 0 var(--space-2); border-radius: var(--radius-pill);
   font-size: var(--text-caption); font-weight: var(--font-weight-semibold); background: var(--surface-inset); color: var(--text-subtle); white-space: nowrap; }
@@ -50,6 +48,7 @@ export const styles = `
 .bm-button { display: inline-flex; flex-shrink: 0; white-space: nowrap; align-items: center; justify-content: center; gap: var(--space-2); height: 36px; padding: 0 var(--space-4);
   border-radius: var(--radius-pill); border: 0; font: inherit; font-size: var(--text-body); font-weight: var(--font-weight-semibold); cursor: pointer;
   background: var(--affordance-prominent); color: var(--text-on-prominent); }
+a.bm-button { text-decoration: none; }
 .bm-button:hover { background: var(--affordance-prominent-hover); }
 .bm-button:disabled { background: var(--affordance-disabled); color: var(--text-unavailable); cursor: default; }
 .bm-button[data-variant="quiet"] { background: var(--affordance-subtle); color: var(--text-standard); }
@@ -137,5 +136,4 @@ export const styles = `
 .bm-flag code { justify-self: start; padding: 0 var(--space-2); border-radius: var(--radius-pill); background: color-mix(in srgb, var(--red-9) 16%, transparent); color: var(--text-danger); font-weight: var(--font-weight-semibold); }
 .bm-warning { color: var(--text-warning); }
 .bm-footer { display: grid; gap: var(--space-2); margin-top: var(--space-8); max-width: 640px; }
-.bm-toggle { display: inline-flex; align-items: center; gap: var(--space-2); font-size: var(--text-body-sm); color: var(--text-standard); cursor: pointer; }
 `;

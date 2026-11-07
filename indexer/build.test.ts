@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import { addSource } from './add.ts';
 import { buildListing } from './build.ts';
 import { crawl, isTransientOutage } from './crawl.ts';
-import { validateListings } from './schema.ts';
+import { validateIndex } from './schema.ts';
 import { COMMIT, NOW, mock, repoRoutes } from './testkit.ts';
 import type { Listing } from './types.ts';
 
@@ -44,7 +44,7 @@ test('buildListing assembles the spec shape for a root plugin', async () => {
   assert.equal(l.audit.checkedAt, '2026-11-05T23:00:00Z');
   assert.equal(l.stars, 12);
   assert.equal(l.updatedAt, '2026-11-04T10:20:30Z');
-  assert.deepEqual(validateListings({ schemaVersion: 1, generatedAt: '2026-11-05T23:00:00Z', plugins: [l] }), []);
+  assert.deepEqual(validateIndex({ schemaVersion: 1, generatedAt: '2026-11-05T23:00:00Z', mediaPolicy: 'm', plugins: [l] }), []);
 });
 
 test('official is true for the block owner in any case', async () => {
@@ -155,10 +155,10 @@ test('crawl lists good sources, rejects bad ones with reasons, and detects dupli
     'https://github.com/o/a-b main',
     'not a source',
   ].join('\n');
-  const { listings, report } = await crawl({ sourcesText: sources, deps: m.deps, now: () => NOW });
+  const { index, report } = await crawl({ sourcesText: sources, deps: m.deps, now: () => NOW });
 
-  assert.deepEqual(listings.plugins.map((p) => p.key), ['github.com/o/a.b', 'github.com/octo/plug']);
-  assert.deepEqual(validateListings(listings), []);
+  assert.deepEqual(index.plugins.map((p) => p.key), ['github.com/o/a.b', 'github.com/octo/plug']);
+  assert.deepEqual(validateIndex(index), []);
   assert.equal(report.summary.sources, 7);
   assert.equal(report.summary.listed, 2);
   assert.equal(report.summary.rejected, 5);
@@ -178,17 +178,17 @@ test('crawl uses the previous index for accessChanged and cleared.txt for cleari
   const m = () => mock(repoRoutes({ manifest }));
   const src = 'https://github.com/octo/plug main';
   const first = await crawl({ sourcesText: src, deps: m().deps, now: () => NOW });
-  assert.equal(first.listings.plugins[0]!.audit.cleared, false);
+  assert.equal(first.index.plugins[0]!.audit.cleared, false);
   assert.equal(first.report.results[0]!.cleared, false);
   const second = await crawl({
     sourcesText: src,
     clearedText: `github.com/octo/plug ${COMMIT}\n`,
-    previous: { plugins: first.listings.plugins.map((p) => ({ ...p, host: { ...p.host, commands: [] } })) },
+    previous: { plugins: first.index.plugins.map((p) => ({ ...p, host: { ...p.host, commands: [] } })) },
     deps: m().deps,
     now: () => NOW,
   });
-  assert.equal(second.listings.plugins[0]!.audit.cleared, true);
-  assert.equal(second.listings.plugins[0]!.audit.accessChanged, true);
+  assert.equal(second.index.plugins[0]!.audit.cleared, true);
+  assert.equal(second.index.plugins[0]!.audit.accessChanged, true);
 });
 
 test('add appends a passing source and refuses duplicates, private repos and denylisted keys', async () => {

@@ -1,0 +1,26 @@
+name: List a plugin
+description: Ask for a Buzz plugin in a public GitHub repository to be listed in the Community Marketplace.
+title: "List: "
+labels: [list-plugin]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        You can also open a pull request that adds the same line to [`sources.txt`](../blob/main/sources.txt). Either way, a check runs and comments with the result, and a maintainer merges passing sources.
+  - type: input
+    id: source
+    attributes:
+      label: Source line
+      description: "`https://github.com/<owner>/<repo> <branch or tag> [folder]`. Leave the folder off when the plugin is at the repository root."
+      placeholder: https://github.com/octo/notes-plugin main
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: The repository is public, and the built `manifest.json` and `plugin.js` are committed at that branch and folder.
+          required: true
+        - label: I wrote this plugin or have the author's permission to list it.
+          required: true

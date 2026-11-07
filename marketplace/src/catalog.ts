@@ -31,26 +31,16 @@ export type Listing = Readonly<{
   links?: Readonly<Record<string, string>>;
   stars?: number;
   updatedAt?: string;
-  installs: Readonly<{ allTime: number; last24h: number; last7d: number }>;
-  upvotes?: number;
-}>;
-export type Rankings = Readonly<{
-  allTime: readonly string[];
-  trending: readonly string[];
-  hot: readonly string[];
-  mostUpvoted: readonly string[];
 }>;
 export type Index = Readonly<{
   schemaVersion: 1;
   generatedAt: string;
-  collectionStartedAt: string;
   plugins: readonly Listing[];
-  rankings: Rankings;
 }>;
-export type Sort = keyof Rankings;
+export type Sort = "updated" | "stars" | "name";
 
-export const INDEX_ORIGIN = "https://plugins.buzz.example";
-const INDEX_URL = `${INDEX_ORIGIN}/v1/index.json`;
+export const LISTING_REPOSITORY = "block/buzz-plugins";
+export const INDEX_URL = `https://raw.githubusercontent.com/${LISTING_REPOSITORY}/index/index.json`;
 
 export const categories: Readonly<Record<string, string>> = {
   communication: "Communication",
@@ -62,10 +52,9 @@ export const categories: Readonly<Record<string, string>> = {
 };
 
 export const sorts: readonly Readonly<{ id: Sort; label: string }>[] = [
-  { id: "allTime", label: "All time" },
-  { id: "trending", label: "Trending" },
-  { id: "hot", label: "Hot" },
-  { id: "mostUpvoted", label: "Most upvoted" },
+  { id: "updated", label: "Recently updated" },
+  { id: "stars", label: "Most stars" },
+  { id: "name", label: "A–Z" },
 ];
 
 const KEY = /^github\.com\/([A-Za-z0-9._-]{1,100})\/([A-Za-z0-9._-]{1,100})((?:\/[A-Za-z0-9._@+-]{1,100}){0,8})$/;
@@ -88,7 +77,7 @@ function validListing(value: unknown): value is Listing {
   if (!listing || typeof listing !== "object") return false;
   const parts = typeof listing.key === "string" ? parseKey(listing.key) : null;
   if (!parts) return false;
-  const { host, audit, source, installs, demo } = listing;
+  const { host, audit, source, demo } = listing;
   return (
     /^[a-z0-9-]{1,120}$/.test(String(listing.slug)) &&
     /^[a-z][a-z0-9.-]{0,79}$/.test(String(listing.id)) &&
@@ -113,38 +102,13 @@ function validListing(value: unknown): value is Listing {
     Array.isArray(audit.flags) &&
     audit.flags.every((item) => text(item?.code) && text(item?.detail)) &&
     typeof audit.cleared === "boolean" &&
-    !!installs &&
-    [installs.allTime, installs.last24h, installs.last7d].every(count) &&
-    (listing.upvotes === undefined || count(listing.upvotes)) &&
+    (listing.stars === undefined || count(listing.stars)) &&
+    (listing.updatedAt === undefined || Number.isFinite(Date.parse(String(listing.updatedAt)))) &&
     (demo === undefined ||
       (media(demo.video) && media(demo.poster) && (demo.screenshots ?? []).every((shot) => media(shot)))) &&
     (listing.setup ?? []).every((step) => text(step?.title)) &&
     (listing.links === undefined || (!!listing.links && typeof listing.links === "object"))
   );
-}
-
-function sanitizeRankings(value: unknown, plugins: readonly Listing[]): Rankings {
-  const byKey = new Map(plugins.map((plugin) => [plugin.key, plugin]));
-  const listed = (name: Sort, eligible: (plugin: Listing) => boolean) => {
-    const raw = (value as Record<string, unknown> | undefined)?.[name];
-    const seen = new Set<string>();
-    for (const key of Array.isArray(raw) ? raw : []) {
-      const plugin = typeof key === "string" ? byKey.get(key) : undefined;
-      if (plugin && eligible(plugin)) seen.add(plugin.key);
-    }
-    return [...seen];
-  };
-  const allTime = listed("allTime", () => true);
-  const rest = plugins
-    .filter((plugin) => !allTime.includes(plugin.key))
-    .sort((a, b) => b.installs.allTime - a.installs.allTime)
-    .map((plugin) => plugin.key);
-  return {
-    allTime: [...allTime, ...rest],
-    trending: listed("trending", (plugin) => plugin.audit.cleared),
-    hot: listed("hot", (plugin) => plugin.audit.cleared),
-    mostUpvoted: listed("mostUpvoted", (plugin) => plugin.audit.cleared && (plugin.upvotes ?? 0) > 0),
-  };
 }
 
 export function parseIndex(value: unknown): Index | null {
@@ -160,23 +124,14 @@ export function parseIndex(value: unknown): Index | null {
   });
   if (raw.plugins.length && !plugins.length) return null;
   const generatedAt = Date.parse(String(raw.generatedAt));
-  const collectionStartedAt = Date.parse(String(raw.collectionStartedAt));
-  if (!Number.isFinite(generatedAt) || !Number.isFinite(collectionStartedAt)) return null;
-  return {
-    schemaVersion: 1,
-    generatedAt: new Date(generatedAt).toISOString(),
-    collectionStartedAt: new Date(collectionStartedAt).toISOString(),
-    plugins,
-    rankings: sanitizeRankings(raw.rankings, plugins),
-  };
+  if (!Number.isFinite(generatedAt)) return null;
+  return { schemaVersion: 1, generatedAt: new Date(generatedAt).toISOString(), plugins };
 }
 
 export const bundledIndex: Index = parseIndex(snapshot) ?? {
   schemaVersion: 1,
   generatedAt: new Date(0).toISOString(),
-  collectionStartedAt: new Date(0).toISOString(),
   plugins: [],
-  rankings: { allTime: [], trending: [], hot: [], mostUpvoted: [] },
 };
 
 export async function loadIndex(host: Context["host"] | undefined): Promise<{ index: Index; live: boolean }> {
@@ -192,9 +147,16 @@ export async function loadIndex(host: Context["host"] | undefined): Promise<{ in
   }
 }
 
-export function ranked(index: Index, sort: Sort): Listing[] {
-  const byKey = new Map(index.plugins.map((plugin) => [plugin.key, plugin]));
-  return index.rankings[sort].flatMap((key) => byKey.get(key) ?? []);
+const updated = (listing: Listing) => Date.parse(listing.updatedAt ?? "") || 0;
+const byName = (a: Listing, b: Listing) => a.name.localeCompare(b.name, "en", { sensitivity: "base" }) || (a.key < b.key ? -1 : 1);
+const comparators: Readonly<Record<Sort, (a: Listing, b: Listing) => number>> = {
+  updated: (a, b) => updated(b) - updated(a) || byName(a, b),
+  stars: (a, b) => (b.stars ?? 0) - (a.stars ?? 0) || byName(a, b),
+  name: byName,
+};
+
+export function sorted(index: Index, sort: Sort): Listing[] {
+  return [...index.plugins].sort(comparators[sort]);
 }
 
 export function search(plugins: readonly Listing[], query: string, category: string | null) {

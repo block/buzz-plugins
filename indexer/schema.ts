@@ -109,27 +109,13 @@ export function checkListing(c: Checker, p: unknown, path: string): void {
   c.iso(`${path}.updatedAt`, l.updatedAt);
 }
 
-export function validateListings(value: unknown): string[] {
-  const c = new Checker();
-  if (!c.at('$', isRec(value), 'must be an object')) return c.errors;
-  const f = value as Rec;
-  c.at('$.schemaVersion', f.schemaVersion === 1, 'must be 1');
-  c.iso('$.generatedAt', f.generatedAt);
-  if (c.at('$.plugins', Array.isArray(f.plugins), 'must be a list')) {
-    (f.plugins as unknown[]).forEach((p, i) => checkListing(c, p, `$.plugins[${i}]`));
-  }
-  return c.errors;
-}
-
 export function validateIndex(value: unknown): string[] {
   const c = new Checker();
   if (!c.at('$', isRec(value), 'must be an object')) return c.errors;
   const f = value as Rec;
   c.at('$.schemaVersion', f.schemaVersion === 1, 'must be 1');
   c.iso('$.generatedAt', f.generatedAt);
-  c.iso('$.collectionStartedAt', f.collectionStartedAt);
   c.string('$.mediaPolicy', f.mediaPolicy, 500, 1);
-
   const keys = new Set<string>();
   const slugs = new Set<string>();
   if (c.at('$.plugins', Array.isArray(f.plugins), 'must be a list')) {
@@ -145,41 +131,7 @@ export function validateIndex(value: unknown): string[] {
         c.at(`${path}.slug`, !slugs.has(p.slug), 'duplicate slug');
         slugs.add(p.slug);
       }
-      if (c.at(`${path}.installs`, isRec(p.installs), 'must be an object')) {
-        const n = p.installs as Rec;
-        for (const k of ['allTime', 'last24h', 'last7d']) {
-          c.at(`${path}.installs.${k}`, Number.isInteger(n[k]) && (n[k] as number) >= 0, 'must be a non-negative integer');
-        }
-        if (Number.isInteger(n.allTime) && Number.isInteger(n.last7d) && Number.isInteger(n.last24h)) {
-          c.at(`${path}.installs`, (n.last24h as number) <= (n.last7d as number) && (n.last7d as number) <= (n.allTime as number), 'must satisfy last24h <= last7d <= allTime');
-        }
-      }
-      if (c.at(`${path}.upvotes`, Number.isInteger(p.upvotes) && (p.upvotes as number) >= 0, 'must be a non-negative integer') && isRec(p.installs)) {
-        const all = (p.installs as Rec).allTime;
-        if (Number.isInteger(all)) c.at(`${path}.upvotes`, (p.upvotes as number) <= (all as number), 'must not exceed installs.allTime');
-      }
     });
-  }
-
-  if (c.at('$.rankings', isRec(f.rankings), 'must be an object')) {
-    const r = f.rankings as Rec;
-    const plugins = Array.isArray(f.plugins) ? (f.plugins as Rec[]) : [];
-    const byKey = new Map(plugins.map((p) => [p.key as string, p]));
-    for (const name of ['allTime', 'trending', 'hot', 'mostUpvoted']) {
-      const list = r[name];
-      if (!c.at(`$.rankings.${name}`, Array.isArray(list) && list.every((k) => typeof k === 'string'), 'must be a list of keys')) continue;
-      const seen = new Set<string>();
-      for (const k of list as string[]) {
-        c.at(`$.rankings.${name}`, byKey.has(k), `unknown key ${k}`);
-        c.at(`$.rankings.${name}`, !seen.has(k), `duplicate key ${k}`);
-        seen.add(k);
-        if (name !== 'allTime') {
-          const audit = byKey.get(k)?.audit as Rec | undefined;
-          c.at(`$.rankings.${name}`, audit?.cleared === true, `${k} is not cleared`);
-        }
-      }
-      if (name === 'allTime') c.at('$.rankings.allTime', seen.size === byKey.size, 'must rank every plugin');
-    }
   }
   return c.errors;
 }

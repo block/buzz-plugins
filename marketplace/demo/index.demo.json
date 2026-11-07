@@ -1,7 +1,6 @@
 {
   "schemaVersion": 1,
   "generatedAt": "2026-11-05T23:00:00Z",
-  "collectionStartedAt": "2026-11-01T00:00:00Z",
   "mediaPolicy": "raw.githubusercontent.com at the pinned commit, or https URLs the author lists",
   "plugins": [
     {
@@ -68,13 +67,7 @@
         "repository": "https://github.com/nickhenggeler/buzz-projects-plugin"
       },
       "stars": 57,
-      "updatedAt": "2026-10-29T15:12:00Z",
-      "installs": {
-        "allTime": 142,
-        "last24h": 9,
-        "last7d": 31
-      },
-      "upvotes": 71
+      "updatedAt": "2026-10-29T15:12:00Z"
     },
     {
       "key": "github.com/block/buzz-app/examples/plugins/counter",
@@ -140,13 +133,7 @@
         "repository": "https://github.com/block/buzz-app"
       },
       "stars": 410,
-      "updatedAt": "2026-10-12T09:30:00Z",
-      "installs": {
-        "allTime": 388,
-        "last24h": 4,
-        "last7d": 22
-      },
-      "upvotes": 64
+      "updatedAt": "2026-10-12T09:30:00Z"
     },
     {
       "key": "github.com/block/buzz-app/examples/plugins/notes",
@@ -193,13 +180,7 @@
         "repository": "https://github.com/block/buzz-app"
       },
       "stars": 410,
-      "updatedAt": "2026-10-12T09:30:00Z",
-      "installs": {
-        "allTime": 251,
-        "last24h": 11,
-        "last7d": 64
-      },
-      "upvotes": 96
+      "updatedAt": "2026-10-12T09:30:00Z"
     },
     {
       "key": "github.com/block/buzz-app/examples/plugins/shortcut-counter",
@@ -246,13 +227,7 @@
         "repository": "https://github.com/block/buzz-app"
       },
       "stars": 410,
-      "updatedAt": "2026-10-12T09:30:00Z",
-      "installs": {
-        "allTime": 96,
-        "last24h": 1,
-        "last7d": 8
-      },
-      "upvotes": 9
+      "updatedAt": "2026-10-12T09:30:00Z"
     },
     {
       "key": "github.com/ada-ostrow/buzz-pr-digest",
@@ -307,13 +282,7 @@
         "docs": "https://github.com/ada-ostrow/buzz-pr-digest#usage"
       },
       "stars": 33,
-      "updatedAt": "2026-11-03T18:45:00Z",
-      "installs": {
-        "allTime": 74,
-        "last24h": 18,
-        "last7d": 52
-      },
-      "upvotes": 38
+      "updatedAt": "2026-11-03T18:45:00Z"
     },
     {
       "key": "github.com/relaycrew/agent-toolbox",
@@ -374,13 +343,7 @@
         "repository": "https://github.com/relaycrew/agent-toolbox"
       },
       "stars": 208,
-      "updatedAt": "2026-11-04T21:05:00Z",
-      "installs": {
-        "allTime": 310,
-        "last24h": 40,
-        "last7d": 120
-      },
-      "upvotes": 140
+      "updatedAt": "2026-11-04T21:05:00Z"
     },
     {
       "key": "github.com/moss-lab/buzz-standup",
@@ -429,13 +392,7 @@
         "repository": "https://github.com/moss-lab/buzz-standup"
       },
       "stars": 19,
-      "updatedAt": "2026-11-04T10:20:00Z",
-      "installs": {
-        "allTime": 48,
-        "last24h": 6,
-        "last7d": 29
-      },
-      "upvotes": 22
+      "updatedAt": "2026-11-04T10:20:00Z"
     },
     {
       "key": "github.com/commonroom/buzz-roster",
@@ -482,48 +439,7 @@
         "repository": "https://github.com/commonroom/buzz-roster"
       },
       "stars": 4,
-      "updatedAt": "2026-11-05T08:00:00Z",
-      "installs": {
-        "allTime": 2,
-        "last24h": 2,
-        "last7d": 2
-      },
-      "upvotes": 1
+      "updatedAt": "2026-11-05T08:00:00Z"
     }
-  ],
-  "rankings": {
-    "allTime": [
-      "github.com/block/buzz-app/examples/plugins/counter",
-      "github.com/relaycrew/agent-toolbox",
-      "github.com/block/buzz-app/examples/plugins/notes",
-      "github.com/nickhenggeler/buzz-projects-plugin",
-      "github.com/block/buzz-app/examples/plugins/shortcut-counter",
-      "github.com/ada-ostrow/buzz-pr-digest",
-      "github.com/moss-lab/buzz-standup",
-      "github.com/commonroom/buzz-roster"
-    ],
-    "trending": [
-      "github.com/ada-ostrow/buzz-pr-digest",
-      "github.com/nickhenggeler/buzz-projects-plugin",
-      "github.com/block/buzz-app/examples/plugins/notes",
-      "github.com/moss-lab/buzz-standup",
-      "github.com/block/buzz-app/examples/plugins/counter"
-    ],
-    "hot": [
-      "github.com/block/buzz-app/examples/plugins/notes",
-      "github.com/ada-ostrow/buzz-pr-digest",
-      "github.com/nickhenggeler/buzz-projects-plugin",
-      "github.com/moss-lab/buzz-standup",
-      "github.com/block/buzz-app/examples/plugins/counter",
-      "github.com/block/buzz-app/examples/plugins/shortcut-counter"
-    ],
-    "mostUpvoted": [
-      "github.com/block/buzz-app/examples/plugins/notes",
-      "github.com/nickhenggeler/buzz-projects-plugin",
-      "github.com/block/buzz-app/examples/plugins/counter",
-      "github.com/ada-ostrow/buzz-pr-digest",
-      "github.com/moss-lab/buzz-standup",
-      "github.com/block/buzz-app/examples/plugins/shortcut-counter"
-    ]
-  }
+  ]
 }
