@@ -1,0 +1,194 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-11-17T20:54:36Z",
+  "mediaPolicy": "raw.githubusercontent.com at the pinned commit, or https URLs the author lists",
+  "plugins": [
+    {
+      "key": "github.com/block/buzz-app/examples/plugins/counter",
+      "slug": "github-com--block--buzz-app--examples--plugins--counter",
+      "id": "example.counter",
+      "name": "Counter playground",
+      "tagline": "",
+      "description": "",
+      "category": "productivity",
+      "tags": [],
+      "author": {
+        "github": "block"
+      },
+      "official": true,
+      "source": {
+        "repository": "https://github.com/block/buzz-app",
+        "ref": "main",
+        "commit": "3728b636c5acda4fa6e2439a1aa8a74d23440fd8",
+        "path": "examples/plugins/counter"
+      },
+      "host": {
+        "networkOrigins": [],
+        "processes": [],
+        "commands": [],
+        "files": false,
+        "mcp": false,
+        "agentHooks": false
+      },
+      "audit": {
+        "tier": "low",
+        "flags": [],
+        "accessChanged": false,
+        "cleared": true,
+        "checkedAt": "2026-11-17T20:54:34Z"
+      },
+      "demo": {
+        "video": null,
+        "poster": null,
+        "screenshots": []
+      },
+      "setup": [],
+      "links": {
+        "repository": "https://github.com/block/buzz-app"
+      },
+      "stars": 279,
+      "updatedAt": "2026-11-17T20:43:34Z"
+    },
+    {
+      "key": "github.com/block/buzz-app/examples/plugins/notes",
+      "slug": "github-com--block--buzz-app--examples--plugins--notes",
+      "id": "example.notes",
+      "name": "Notes playground",
+      "tagline": "",
+      "description": "",
+      "category": "productivity",
+      "tags": [],
+      "author": {
+        "github": "block"
+      },
+      "official": true,
+      "source": {
+        "repository": "https://github.com/block/buzz-app",
+        "ref": "main",
+        "commit": "3728b636c5acda4fa6e2439a1aa8a74d23440fd8",
+        "path": "examples/plugins/notes"
+      },
+      "host": {
+        "networkOrigins": [],
+        "processes": [],
+        "commands": [],
+        "files": false,
+        "mcp": false,
+        "agentHooks": false
+      },
+      "audit": {
+        "tier": "low",
+        "flags": [],
+        "accessChanged": false,
+        "cleared": true,
+        "checkedAt": "2026-11-17T20:54:35Z"
+      },
+      "demo": {
+        "video": null,
+        "poster": null,
+        "screenshots": []
+      },
+      "setup": [],
+      "links": {
+        "repository": "https://github.com/block/buzz-app"
+      },
+      "stars": 279,
+      "updatedAt": "2026-11-17T20:43:34Z"
+    },
+    {
+      "key": "github.com/block/buzz-app/examples/plugins/shortcut-counter",
+      "slug": "github-com--block--buzz-app--examples--plugins--shortcut-counter",
+      "id": "example.shortcut-counter",
+      "name": "Shortcut counter",
+      "tagline": "",
+      "description": "# Shortcut counter\n\nImport this folder from desktop Settings → Plugins, then enable **Shortcut counter**.\nThe prebuilt `plugin.js` has no runtime imports or build step. Requires a host with\n`shortcuts` (host-matched API v1 preview, not a cross-version SDK).\n\nPress **⌘⇧G** on Mac / **Ctrl+Shift+G** elsewhere to increment. The same handler\nbacks the button. The count lasts for the plugin lifetime, not a page mount;\ndisable/re-enable resets it and disposes/re-registers the binding. The typing\nfield demonstrates the default editable-target guard. No custom DOM listener,\nservice instance, or manual unload hook is required.\n",
+      "category": "productivity",
+      "tags": [],
+      "author": {
+        "github": "block"
+      },
+      "official": true,
+      "source": {
+        "repository": "https://github.com/block/buzz-app",
+        "ref": "main",
+        "commit": "3728b636c5acda4fa6e2439a1aa8a74d23440fd8",
+        "path": "examples/plugins/shortcut-counter"
+      },
+      "host": {
+        "networkOrigins": [],
+        "processes": [],
+        "commands": [],
+        "files": false,
+        "mcp": false,
+        "agentHooks": false
+      },
+      "audit": {
+        "tier": "low",
+        "flags": [],
+        "accessChanged": false,
+        "cleared": true,
+        "checkedAt": "2026-11-17T20:54:36Z"
+      },
+      "demo": {
+        "video": null,
+        "poster": null,
+        "screenshots": []
+      },
+      "setup": [],
+      "links": {
+        "repository": "https://github.com/block/buzz-app"
+      },
+      "stars": 279,
+      "updatedAt": "2026-11-17T20:43:34Z"
+    },
+    {
+      "key": "github.com/nickhenggeler/buzz-projects-plugin",
+      "slug": "github-com--nickhenggeler--buzz-projects-plugin",
+      "id": "sprig.projects",
+      "name": "Projects",
+      "tagline": "Browse your community's projects, repositories and linked channels.",
+      "description": "# Projects for Buzz\n\nBrowse your community's projects, repositories and files right beside your conversations.\n\n[Buzz 1.0](https://github.com/block/buzz-app) can open a repository from a link, but it has no\npage that lists them. This plugin adds that page, with a real file browser, as a side panel\nor a full page.\n\n![Projects open beside a channel](docs/side-panel.jpg)\n\n## Features\n\n- **Works beside your chat.** Open it from any channel header and keep talking while you browse.\n- **All your projects in one place.** See each project's repositories and linked channels.\n- **The current channel comes first.** Repositories linked to the channel you're in appear at the top.\n- **A proper file browser.** Folder tree, breadcrumbs and file view with line numbers.\n- **Find files fast.** Search by name, then use the arrow keys and Return.\n- **Readable docs.** READMEs and Markdown files display formatted.\n- **Commit history.** Commits grouped by day, with collapsible per-file diffs.\n- **It keeps your place.** Your repository, folder and file stay put when you switch views.\n\n![The full-page repository browser](docs/full-page.jpg)\n\n## Install\n\nRequires Buzz 1.0 on the desktop.\n\nOn a Mac, run:\n\n```sh\nopen 'buzz://plugin-install?repository=nickhenggeler%2Fbuzz-projects-plugin&ref=main'\n```\n\nOr open **Settings → Plugins → Manage plugins**, add the repository\n`nickhenggeler/buzz-projects-plugin`, then review and install it.\n\nBuzz doesn't pull updates by itself. To move a plugin you installed from a folder over to\nthis repository, remove it first, then install it from here.\n\n## Use it\n\n- **Beside a conversation:** click the folder button in a channel header.\n- **From anywhere:** click **Projects** in the top bar.\n- **Full window:** open **Projects** in the sidebar.\n\nOn the full page, press `/` to jump to file search.\n\n## Limits\n\n- Projects is read-only. It can't create or edit projects yet.\n- Buzz allows about 12 seconds per repository read, so very large repositories or slow servers\n  can fail to load. Use **Try again** if that happens.\n- Pull requests and issues open in Buzz's built-in repository page.\n- Repository links in chat still open Buzz's built-in viewer.\n- Markdown support covers common formatting. Images and raw HTML aren't shown.\n- There is no syntax highlighting yet.\n\n## Development\n\nThe plugin is one dependency-free file, `plugin.js`, with no build step.\n\n- Run the tests on macOS with `tests/run.sh`.\n- To try the interface with sample data, serve this folder and open `tests/preview.html`.\n  Add `?panel=1` for the side panel, or `?delay=4600` to simulate a slow server.\n\n## Related\n\n[Code Lite](https://github.com/nickhenggeler/buzz-code-lite) adds a lightweight code editor to Buzz.\n\n## License\n\n[Apache-2.0](LICENSE). This is an independent community plugin, not an official Block project.\n",
+      "category": "productivity",
+      "tags": [
+        "code",
+        "projects"
+      ],
+      "author": {
+        "github": "nickhenggeler"
+      },
+      "official": false,
+      "source": {
+        "repository": "https://github.com/nickhenggeler/buzz-projects-plugin",
+        "ref": "main",
+        "commit": "4cda6e522f04499b8f9f8d7a024551057f9aa001",
+        "path": ""
+      },
+      "host": {
+        "networkOrigins": [],
+        "processes": [],
+        "commands": [],
+        "files": false,
+        "mcp": false,
+        "agentHooks": false
+      },
+      "audit": {
+        "tier": "low",
+        "flags": [],
+        "accessChanged": false,
+        "cleared": true,
+        "checkedAt": "2026-11-17T20:54:33Z"
+      },
+      "demo": {
+        "video": null,
+        "poster": null,
+        "screenshots": []
+      },
+      "setup": [],
+      "links": {
+        "repository": "https://github.com/nickhenggeler/buzz-projects-plugin"
+      },
+      "stars": 0,
+      "updatedAt": "2026-11-07T00:32:13Z"
+    }
+  ]
+}

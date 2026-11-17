@@ -1,0 +1,47 @@
+{
+  "generatedAt": "2026-11-17T20:54:36Z",
+  "summary": {
+    "sources": 4,
+    "listed": 4,
+    "rejected": 0,
+    "byReason": {}
+  },
+  "results": [
+    {
+      "source": "github.com/nickhenggeler/buzz-projects-plugin@main",
+      "key": "github.com/nickhenggeler/buzz-projects-plugin",
+      "status": "listed",
+      "commit": "4cda6e522f04499b8f9f8d7a024551057f9aa001",
+      "tier": "low",
+      "cleared": true,
+      "flags": []
+    },
+    {
+      "source": "github.com/block/buzz-app/examples/plugins/counter@main",
+      "key": "github.com/block/buzz-app/examples/plugins/counter",
+      "status": "listed",
+      "commit": "3728b636c5acda4fa6e2439a1aa8a74d23440fd8",
+      "tier": "low",
+      "cleared": true,
+      "flags": []
+    },
+    {
+      "source": "github.com/block/buzz-app/examples/plugins/notes@main",
+      "key": "github.com/block/buzz-app/examples/plugins/notes",
+      "status": "listed",
+      "commit": "3728b636c5acda4fa6e2439a1aa8a74d23440fd8",
+      "tier": "low",
+      "cleared": true,
+      "flags": []
+    },
+    {
+      "source": "github.com/block/buzz-app/examples/plugins/shortcut-counter@main",
+      "key": "github.com/block/buzz-app/examples/plugins/shortcut-counter",
+      "status": "listed",
+      "commit": "3728b636c5acda4fa6e2439a1aa8a74d23440fd8",
+      "tier": "low",
+      "cleared": true,
+      "flags": []
+    }
+  ]
+}
