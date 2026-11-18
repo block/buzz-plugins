@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-11-17T20:54:36Z",
+  "generatedAt": "2026-11-18T00:43:55Z",
   "mediaPolicy": "raw.githubusercontent.com at the pinned commit, or https URLs the author lists",
   "plugins": [
     {
@@ -19,7 +19,7 @@
       "source": {
         "repository": "https://github.com/block/buzz-app",
         "ref": "main",
-        "commit": "3728b636c5acda4fa6e2439a1aa8a74d23440fd8",
+        "commit": "c06d3ed819c7ffbd891ab95e2308a7cc835be544",
         "path": "examples/plugins/counter"
       },
       "host": {
@@ -35,7 +35,7 @@
         "flags": [],
         "accessChanged": false,
         "cleared": true,
-        "checkedAt": "2026-11-17T20:54:34Z"
+        "checkedAt": "2026-11-18T00:43:54Z"
       },
       "demo": {
         "video": null,
@@ -47,7 +47,7 @@
         "repository": "https://github.com/block/buzz-app"
       },
       "stars": 279,
-      "updatedAt": "2026-11-17T20:43:34Z"
+      "updatedAt": "2026-11-18T00:42:40Z"
     },
     {
       "key": "github.com/block/buzz-app/examples/plugins/notes",
@@ -65,7 +65,7 @@
       "source": {
         "repository": "https://github.com/block/buzz-app",
         "ref": "main",
-        "commit": "3728b636c5acda4fa6e2439a1aa8a74d23440fd8",
+        "commit": "c06d3ed819c7ffbd891ab95e2308a7cc835be544",
         "path": "examples/plugins/notes"
       },
       "host": {
@@ -81,7 +81,7 @@
         "flags": [],
         "accessChanged": false,
         "cleared": true,
-        "checkedAt": "2026-11-17T20:54:35Z"
+        "checkedAt": "2026-11-18T00:43:54Z"
       },
       "demo": {
         "video": null,
@@ -93,7 +93,7 @@
         "repository": "https://github.com/block/buzz-app"
       },
       "stars": 279,
-      "updatedAt": "2026-11-17T20:43:34Z"
+      "updatedAt": "2026-11-18T00:42:40Z"
     },
     {
       "key": "github.com/block/buzz-app/examples/plugins/shortcut-counter",
@@ -111,7 +111,7 @@
       "source": {
         "repository": "https://github.com/block/buzz-app",
         "ref": "main",
-        "commit": "3728b636c5acda4fa6e2439a1aa8a74d23440fd8",
+        "commit": "c06d3ed819c7ffbd891ab95e2308a7cc835be544",
         "path": "examples/plugins/shortcut-counter"
       },
       "host": {
@@ -127,7 +127,7 @@
         "flags": [],
         "accessChanged": false,
         "cleared": true,
-        "checkedAt": "2026-11-17T20:54:36Z"
+        "checkedAt": "2026-11-18T00:43:55Z"
       },
       "demo": {
         "video": null,
@@ -139,7 +139,7 @@
         "repository": "https://github.com/block/buzz-app"
       },
       "stars": 279,
-      "updatedAt": "2026-11-17T20:43:34Z"
+      "updatedAt": "2026-11-18T00:42:40Z"
     },
     {
       "key": "github.com/nickhenggeler/buzz-projects-plugin",
@@ -176,7 +176,7 @@
         "flags": [],
         "accessChanged": false,
         "cleared": true,
-        "checkedAt": "2026-11-17T20:54:33Z"
+        "checkedAt": "2026-11-18T00:43:53Z"
       },
       "demo": {
         "video": null,
