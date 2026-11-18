@@ -3,7 +3,7 @@ import { CATEGORIES, COMMIT_RE, PLUGIN_ID_RE } from './types.ts';
 
 type Rec = Record<string, unknown>;
 
-const KEY_RE = /^github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(\/[A-Za-z0-9._-]+)*$/;
+const KEY_RE = /^github\.com\/[A-Za-z0-9_.-]{1,100}\/[A-Za-z0-9_.-]{1,100}(\/[A-Za-z0-9._@+-]{1,100}){0,8}$/;
 const ISO_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/;
 
 export function isKey(value: unknown): value is string {
