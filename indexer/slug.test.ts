@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { isKey } from './schema.ts';
 import { listingKey, normalizePath, slugify } from './slug.ts';
 import { formatSource, isCleared, parseCleared, parseSources } from './sources.ts';
 
@@ -27,6 +28,9 @@ test('paths are normalized and traversal is rejected', () => {
   assert.equal(normalizePath('..'), null);
   assert.equal(normalizePath('a/../b'), null);
   assert.equal(normalizePath('a b'), null);
+  assert.equal(normalizePath('packages/@octo/notes+v2'), 'packages/@octo/notes+v2');
+  assert.equal(normalizePath('a'.repeat(101)), null);
+  assert.equal(normalizePath('a/'.repeat(9)), null);
 });
 
 test('sources.txt lines parse, comments are skipped and bad lines are reported', () => {
@@ -56,4 +60,10 @@ test('cleared.txt matches on key and commit, case-insensitively, ignoring commen
   assert.ok(isCleared(cleared, 'github.com/o/r', commit));
   assert.ok(!isCleared(cleared, 'github.com/o/r', 'c'.repeat(40)));
   assert.ok(!isCleared(cleared, 'github.com/o/bad', commit));
+});
+
+test('a listing key takes the folder names a source path takes', () => {
+  assert.equal(isKey('github.com/octo/notes/packages/@octo/notes+v2'), true);
+  assert.equal(isKey(`github.com/octo/notes/${'a/'.repeat(8)}a`), false);
+  assert.equal(isKey('github.com/octo/notes/a b'), false);
 });

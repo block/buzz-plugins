@@ -111,7 +111,7 @@ A listing whose tier is `high`, or that has any flag, gets `audit.cleared: false
 }
 ```
 
-`official` is true when the owner is `block`. `host` is copied from the manifest's `host` and normalized: process and command entries become display strings such as `my-cli sync`. `source.path` is `""` for the repository root and never starts or ends with `/`.
+`official` is true when the owner is `block`. `host` is copied from the manifest's `host` and normalized: process and command entries become display strings such as `my-cli sync`. `source.path` is `""` for the repository root and never starts or ends with `/`. It has at most 8 folders, and each folder name is 1 to 100 characters from `A-Z`, `a-z`, `0-9`, `.`, `_`, `-`, `@` and `+`, so scoped package folders such as `packages/@scope/name` work.
 
 Plugins are sorted by key. Consumers sort and filter for themselves.
 
