@@ -599,8 +599,8 @@ export function createViews(ctx: Context, capability: PluginsCapability | undefi
             <h1 className="bm-title">Community Marketplace</h1>
             <p className="bm-subtitle">Open plugins from public Git repositories.</p>
           </div>
-          <button className="bm-button" data-variant="quiet" onClick={onAdd}>
-            Add your plugin
+          <button className="bm-button" data-size="sm" aria-label="Add your plugin" onClick={onAdd}>
+            Add
           </button>
         </header>
         <div className="bm-toolbar">
