@@ -1,4 +1,4 @@
-import { isCleared } from './sources.ts';
+import { isPinned } from './sources.ts';
 import type { Audit, Flag, Host, Tier } from './types.ts';
 
 export const SIZE_LIMIT_BYTES = 3 * 1024 * 1024;
@@ -137,7 +137,7 @@ export function audit(input: {
     tier,
     flags,
     accessChanged: accessChanged(input.host, input.previousHost),
-    cleared: !needsClearing || isCleared(input.cleared, input.key, input.commit),
+    cleared: !needsClearing || isPinned(input.cleared, input.key, input.commit),
     checkedAt: input.checkedAt,
   };
 }

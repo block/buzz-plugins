@@ -21,6 +21,17 @@ type Node = ReturnType<ReactLike["createElement"]> | string | null;
 export const PLUGIN_ID = "xyz.block.community-marketplace";
 export const PAGE_ID = "marketplace";
 
+export const VERIFIED_LABEL = "Verified plugin: Buzz reviewed this version";
+
+// Sits on the plugin's name, so the mark reads as the plugin's and not its author's.
+const VerifiedMark = (React: ReactLike) => () => (
+  <svg className="bm-verified" width="16" height="16" viewBox="0 0 24 24" role="img" aria-label={VERIFIED_LABEL}>
+    <title>{VERIFIED_LABEL}</title>
+    <path fill="currentColor" d="M12 1.5 14.6 4l3.5-.5.9 3.4 3.2 1.6-1.3 3.3 1.3 3.3-3.2 1.6-.9 3.4-3.5-.5L12 22.1 9.4 19.6l-3.5.5-.9-3.4-3.2-1.6 1.3-3.3-1.3-3.3L5 6.9l.9-3.4 3.5.5z" />
+    <path fill="none" stroke="var(--bg-app, #fff)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" d="m8 12.2 2.7 2.7L16 9.4" />
+  </svg>
+);
+
 const SearchIcon = (React: ReactLike) => () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
     <circle cx="11" cy="11" r="7" />
@@ -36,8 +47,11 @@ export const listingLink = (slug: string) =>
 export const day = (iso: string) => new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
 export const starLabel = (count: number) => `${count.toLocaleString("en-US")} ${count === 1 ? "star" : "stars"} on GitHub`;
 
-export const trustLabel = (listing: Listing) => (listing.official ? "Official" : "Community · not reviewed");
-export const cardTrustLabel = (listing: Listing) => (listing.official ? "Official" : "Unreviewed");
+export const trustLabel = (listing: Listing) =>
+  listing.official ? "Official" : listing.verified ? "Verified by Buzz" : "Community · not reviewed";
+// A verified card carries the mark on its name instead of a label beside its author.
+export const cardTrustLabel = (listing: Listing) => (listing.official ? "Official" : listing.verified ? null : "Unreviewed");
+const trustTone = (listing: Listing) => (listing.official ? "default" : listing.verified ? "active" : undefined);
 const tierTone = { low: "active", medium: undefined, high: "warn" } as const;
 
 export function slugFromTarget(target: unknown): string | null {
@@ -50,6 +64,7 @@ export function createViews(ctx: Context, capability: PluginsCapability | undefi
   const { useEffect, useMemo, useState, useSyncExternalStore } = React;
   const Markdown = createMarkdown(React);
   const Search = SearchIcon(React);
+  const Verified = VerifiedMark(React);
 
   const listeners = new Set<() => void>();
   let active = activePluginIds(ctx);
@@ -153,8 +168,9 @@ export function createViews(ctx: Context, capability: PluginsCapability | undefi
   }
 
   function TrustBadge({ listing, compact }: { listing: Listing; compact?: boolean }) {
+    if (compact && cardTrustLabel(listing) === null) return null;
     return (
-      <span className="bm-badge" data-tone={listing.official ? "default" : undefined} title={compact ? trustLabel(listing) : undefined}>
+      <span className="bm-badge" data-tone={trustTone(listing)} title={compact ? trustLabel(listing) : undefined}>
         {compact ? cardTrustLabel(listing) : trustLabel(listing)}
       </span>
     );
@@ -540,7 +556,10 @@ export function createViews(ctx: Context, capability: PluginsCapability | undefi
         </div>
         <div className="bm-card-body">
           <div className="bm-card-row">
-            <span className="bm-card-name">{listing.name}</span>
+            <span className="bm-card-title">
+              <span className="bm-card-name">{listing.name}</span>
+              {listing.verified ? <Verified /> : null}
+            </span>
             <AddedBadge listing={listing} />
           </div>
           <span className="bm-card-tagline">{listing.tagline}</span>
@@ -580,30 +599,11 @@ export function createViews(ctx: Context, capability: PluginsCapability | undefi
             <h1 className="bm-title">Community Marketplace</h1>
             <p className="bm-subtitle">Open plugins from public Git repositories.</p>
           </div>
-          <div className="bm-header-actions">
-            <label className="bm-search">
-              <Search />
-              <input
-                type="search"
-                placeholder="Search plugins"
-                aria-label="Search plugins"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-              />
-            </label>
-            <button className="bm-button" data-variant="quiet" onClick={onAdd}>
-              Add your plugin
-            </button>
-          </div>
+          <button className="bm-button" data-size="sm" aria-label="Add your plugin" onClick={onAdd}>
+            Add
+          </button>
         </header>
         <div className="bm-toolbar">
-          <div className="bm-chips" role="group" aria-label="Sort">
-            {sorts.map((entry) => (
-              <button key={entry.id} className="bm-chip" aria-pressed={sort === entry.id} onClick={() => setSort(entry.id)}>
-                {entry.label}
-              </button>
-            ))}
-          </div>
           <div className="bm-chips" role="group" aria-label="Categories">
             <button className="bm-chip" aria-pressed={category === null} onClick={() => setCategory(null)}>
               All
@@ -614,7 +614,24 @@ export function createViews(ctx: Context, capability: PluginsCapability | undefi
               </button>
             ))}
           </div>
+          <div className="bm-chips bm-sort" role="group" aria-label="Sort">
+            {sorts.map((entry) => (
+              <button key={entry.id} className="bm-chip" aria-pressed={sort === entry.id} onClick={() => setSort(entry.id)}>
+                {entry.label}
+              </button>
+            ))}
+          </div>
         </div>
+        <label className="bm-search">
+          <Search />
+          <input
+            type="search"
+            placeholder="Search plugins"
+            aria-label="Search plugins"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </label>
         <h2 className="bm-section-title">{heading}</h2>
         {visible.length ? (
           <div className="bm-grid">
@@ -659,7 +676,9 @@ export function createViews(ctx: Context, capability: PluginsCapability | undefi
         <span className="bm-note">
           {listing.official
             ? "Published by Block."
-            : "Community plugins are indexed automatically from public repositories. Nobody has reviewed this one."}
+            : listing.verified
+              ? "A Buzz maintainer reviewed this exact version. A newer version is unreviewed until it is checked again."
+              : "Community plugins are indexed automatically from public repositories. Nobody has reviewed this one."}
         </span>
       </div>
     );
@@ -678,7 +697,10 @@ export function createViews(ctx: Context, capability: PluginsCapability | undefi
         </button>
         <div className="bm-detail">
           <div>
-            <h1 className="bm-detail-name">{listing.name}</h1>
+            <h1 className="bm-detail-name">
+              {listing.name}
+              {listing.verified ? <Verified /> : null}
+            </h1>
             {listing.tagline ? <p className="bm-detail-tagline">{listing.tagline}</p> : null}
             <div className="bm-media">
               <Art listing={listing} />

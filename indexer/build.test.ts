@@ -10,10 +10,11 @@ import { validateIndex } from './schema.ts';
 import { COMMIT, NOW, mock, repoRoutes } from './testkit.ts';
 import type { Listing } from './types.ts';
 
-const ctx = (previous: Listing[] = [], cleared = '') => ({
+const ctx = (previous: Listing[] = [], cleared = '', verified = '') => ({
   now: () => NOW,
   previous: new Map(previous.map((p) => [p.key, p])),
   cleared: new Set(cleared ? [cleared] : []),
+  verified: new Set(verified ? [verified] : []),
 });
 
 test('buildListing assembles the spec shape for a root plugin', async () => {
@@ -36,6 +37,7 @@ test('buildListing assembles the spec shape for a root plugin', async () => {
   assert.equal(l.category, 'agents');
   assert.deepEqual(l.author, { github: 'octo' });
   assert.equal(l.official, false);
+  assert.equal(l.verified, false);
   assert.deepEqual(l.source, { repository: 'https://github.com/octo/plug', ref: 'main', commit: COMMIT, path: '' });
   assert.deepEqual(l.host.networkOrigins, ['https://api.github.com']);
   assert.equal(l.audit.tier, 'medium');
@@ -76,6 +78,21 @@ test('a high-tier plugin is cleared when cleared.txt names its commit', async ()
   const r = await buildListing(mock(repoRoutes({ manifest })).deps, { owner: 'octo', repo: 'plug', ref: 'main' }, ctx([], `github.com/octo/plug ${COMMIT}`));
   assert.ok(r.ok);
   assert.equal(r.listing.audit.cleared, true);
+});
+
+test('a listing is verified only at the commit verified.txt names, and that review clears its audit', async () => {
+  const manifest = { id: 'octo.plug', host: { mcp: true } };
+  const build = (verified: string) =>
+    buildListing(mock(repoRoutes({ manifest })).deps, { owner: 'octo', repo: 'plug', ref: 'main' }, ctx([], '', verified));
+  const reviewed = await build(`github.com/octo/plug ${COMMIT}`);
+  assert.ok(reviewed.ok);
+  assert.equal(reviewed.listing.verified, true);
+  assert.equal(reviewed.listing.audit.cleared, true);
+  assert.equal(reviewed.listing.audit.tier, 'high');
+  const moved = await build(`github.com/octo/plug ${'e'.repeat(40)}`);
+  assert.ok(moved.ok);
+  assert.equal(moved.listing.verified, false);
+  assert.equal(moved.listing.audit.cleared, false);
 });
 
 test('accessChanged is computed against the previous index pin', async () => {
@@ -189,6 +206,11 @@ test('crawl uses the previous index for accessChanged and cleared.txt for cleari
   });
   assert.equal(second.index.plugins[0]!.audit.cleared, true);
   assert.equal(second.index.plugins[0]!.audit.accessChanged, true);
+  assert.equal(second.index.plugins[0]!.verified, false);
+  const third = await crawl({ sourcesText: src, verifiedText: `github.com/Octo/Plug ${COMMIT}\n`, deps: m().deps, now: () => NOW });
+  assert.equal(third.index.plugins[0]!.verified, true);
+  assert.equal(third.report.results[0]!.verified, true);
+  assert.deepEqual(validateIndex(third.index), []);
 });
 
 test('add appends a passing source and refuses duplicates, private repos and denylisted keys', async () => {

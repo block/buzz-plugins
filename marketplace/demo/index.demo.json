@@ -19,6 +19,7 @@
         "github": "nickhenggeler"
       },
       "official": false,
+      "verified": false,
       "source": {
         "repository": "https://github.com/nickhenggeler/buzz-projects-plugin",
         "ref": "main",
@@ -85,6 +86,7 @@
         "github": "block"
       },
       "official": true,
+      "verified": false,
       "source": {
         "repository": "https://github.com/block/buzz-app",
         "ref": "main",
@@ -151,6 +153,7 @@
         "github": "block"
       },
       "official": true,
+      "verified": false,
       "source": {
         "repository": "https://github.com/block/buzz-app",
         "ref": "main",
@@ -198,6 +201,7 @@
         "github": "block"
       },
       "official": true,
+      "verified": false,
       "source": {
         "repository": "https://github.com/block/buzz-app",
         "ref": "main",
@@ -245,6 +249,7 @@
         "github": "ada-ostrow"
       },
       "official": false,
+      "verified": true,
       "source": {
         "repository": "https://github.com/ada-ostrow/buzz-pr-digest",
         "ref": "main",
@@ -301,6 +306,7 @@
         "github": "relaycrew"
       },
       "official": false,
+      "verified": false,
       "source": {
         "repository": "https://github.com/relaycrew/agent-toolbox",
         "ref": "main",
@@ -361,6 +367,7 @@
         "github": "moss-lab"
       },
       "official": false,
+      "verified": false,
       "source": {
         "repository": "https://github.com/moss-lab/buzz-standup",
         "ref": "main",
@@ -410,6 +417,7 @@
         "github": "commonroom"
       },
       "official": false,
+      "verified": false,
       "source": {
         "repository": "https://github.com/commonroom/buzz-roster",
         "ref": "main",

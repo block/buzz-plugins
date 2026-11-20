@@ -17,6 +17,7 @@ https://raw.githubusercontent.com/block/buzz-plugins/index/index.json
 | [`marketplace/`](./marketplace) | The Community Marketplace Buzz plugin that browses the index |
 | [`template/`](./template) | A starter plugin for authors |
 | [`SPEC.md`](./SPEC.md) | The contract: listing keys, publicity check, audit, `index.json`, publishing |
+| [`VERIFICATION.md`](./VERIFICATION.md) | How a listing becomes Verified by Buzz, and how that is withdrawn |
 
 ## Listing a plugin
 
@@ -34,7 +35,11 @@ https://raw.githubusercontent.com/block/buzz-plugins/index/index.json
 
 Maintainers can also run `pnpm run add owner/repo [ref] [path]`, which runs the same check and appends the line to `sources.txt`.
 
-Every listing is labelled as unreviewed community content. Buzz's own install review, which shows the requested access and the exact commit, is still the gate before anything runs.
+A new listing is labelled as unreviewed community content. Buzz's own install review, which shows the requested access and the exact commit, is still the gate before anything runs.
+
+## Verified plugins
+
+A listing is marked **Verified by Buzz** once a maintainer has reviewed the exact commit it points at. Authors ask with the [**Verify a plugin**](../../issues/new?template=verify-plugin.yml) issue form. [`VERIFICATION.md`](./VERIFICATION.md) has the review steps and what the mark does and doesn't promise.
 
 ## Privacy
 

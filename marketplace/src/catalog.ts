@@ -16,6 +16,8 @@ export type Listing = Readonly<{
   tags?: readonly string[];
   author: Readonly<{ github: string }>;
   official: boolean;
+  /** Absent in an index published before the verified tier. */
+  verified?: boolean;
   source: Readonly<{ repository: string; ref: string; commit: string; path?: string }>;
   host: Readonly<{
     networkOrigins?: readonly string[];
@@ -88,6 +90,7 @@ function validListing(value: unknown): value is Listing {
     strings(listing.tags) &&
     text(listing.author?.github) &&
     listing.official === (parts.owner === "block") &&
+    flag(listing.verified) &&
     source?.repository === `https://github.com/${parts.owner}/${parts.repo}` &&
     text(source.ref) &&
     /^[0-9a-f]{40}$/.test(String(source.commit)) &&

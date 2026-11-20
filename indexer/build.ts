@@ -6,6 +6,7 @@ import type { Deps } from './net.ts';
 import { checkPublic, fail, getFailure, rawUrl } from './publicity.ts';
 import type { Failure } from './publicity.ts';
 import { listingKey, slugify } from './slug.ts';
+import { isPinned } from './sources.ts';
 import { isoSeconds } from './time.ts';
 import type { Listing, Source } from './types.ts';
 
@@ -13,6 +14,7 @@ export interface BuildContext {
   now: () => number;
   previous: Map<string, Listing>;
   cleared: Set<string>;
+  verified: Set<string>;
 }
 
 const TEXT_LIMIT = 256 * 1024;
@@ -83,6 +85,16 @@ export async function buildListing(
 
   const key = listingKey(source);
   const repository = `https://github.com/${source.owner}/${source.repo}`;
+  const verified = isPinned(ctx.verified, key, commit);
+  const audited = audit({
+    key,
+    commit,
+    host: manifest.host,
+    plugin: checked.pluginJs,
+    previousHost: ctx.previous.get(key)?.host,
+    cleared: ctx.cleared,
+    checkedAt: isoSeconds(ctx.now()),
+  });
   const listing: Listing = {
     key,
     slug: slugify(key),
@@ -94,17 +106,11 @@ export async function buildListing(
     tags: resolved.meta.tags,
     author: { github: source.owner },
     official: source.owner.toLowerCase() === 'block',
+    verified,
     source: { repository, ref: source.ref, commit, path: source.path },
     host: manifest.host,
-    audit: audit({
-      key,
-      commit,
-      host: manifest.host,
-      plugin: checked.pluginJs,
-      previousHost: ctx.previous.get(key)?.host,
-      cleared: ctx.cleared,
-      checkedAt: isoSeconds(ctx.now()),
-    }),
+    // A review of this commit covers whatever the scan flagged in it.
+    audit: verified ? { ...audited, cleared: true } : audited,
     demo: resolved.meta.demo,
     setup: resolved.meta.setup,
     links: resolved.meta.links,
