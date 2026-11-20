@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { listingKey, normalizePath, slugify } from './slug.ts';
-import { formatSource, isCleared, parseCleared, parseSources } from './sources.ts';
+import { formatSource, isPinned, parsePins, parseSources } from './sources.ts';
 
 test('listing keys include the path only when the plugin is not at the root', () => {
   assert.equal(listingKey({ owner: 'o', repo: 'r', path: '' }), 'github.com/o/r');
@@ -50,10 +50,10 @@ test('sources.txt lines parse, comments are skipped and bad lines are reported',
   assert.equal(formatSource(parsed[1]!.source!), 'https://github.com/o/r v1 sub/dir');
 });
 
-test('cleared.txt matches on key and commit, case-insensitively, ignoring comments', () => {
+test('cleared.txt and verified.txt match on key and commit, case-insensitively, ignoring comments', () => {
   const commit = 'b'.repeat(40);
-  const cleared = parseCleared(`# maintainers\ngithub.com/O/R ${commit.toUpperCase()}\ngithub.com/o/bad nothex\n`);
-  assert.ok(isCleared(cleared, 'github.com/o/r', commit));
-  assert.ok(!isCleared(cleared, 'github.com/o/r', 'c'.repeat(40)));
-  assert.ok(!isCleared(cleared, 'github.com/o/bad', commit));
+  const cleared = parsePins(`# maintainers\ngithub.com/O/R ${commit.toUpperCase()}\ngithub.com/o/bad nothex\n`);
+  assert.ok(isPinned(cleared, 'github.com/o/r', commit));
+  assert.ok(!isPinned(cleared, 'github.com/o/r', 'c'.repeat(40)));
+  assert.ok(!isPinned(cleared, 'github.com/o/bad', commit));
 });

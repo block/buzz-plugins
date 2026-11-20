@@ -1,0 +1,43 @@
+name: Verify a plugin
+description: Ask a Buzz maintainer to review one version of a listed plugin.
+title: "Verify: "
+labels: [verify-plugin]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A maintainer reviews the exact commit you give here, following [VERIFICATION.md](../blob/main/VERIFICATION.md). A later commit needs its own review.
+  - type: input
+    id: key
+    attributes:
+      label: Listing key
+      description: "`github.com/<owner>/<repo>[/<folder>]`, as shown on the plugin's page in the Community Marketplace."
+      placeholder: github.com/octo/notes-plugin
+    validations:
+      required: true
+  - type: input
+    id: commit
+    attributes:
+      label: Commit
+      description: The full 40-character commit to review.
+    validations:
+      required: true
+  - type: textarea
+    id: build
+    attributes:
+      label: How to build it
+      description: The commands that produce the committed `plugin.js` from a clean checkout. Leave empty if `plugin.js` is written by hand.
+  - type: textarea
+    id: access
+    attributes:
+      label: Why it needs its access
+      description: One line for each network origin, process, command or file access in the manifest.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I can push to the plugin's repository.
+          required: true
+        - label: The plugin is already listed in the Community Marketplace.
+          required: true

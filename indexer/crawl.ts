@@ -6,7 +6,7 @@ import { realDeps } from './net.ts';
 import type { Deps } from './net.ts';
 import type { ReasonCode } from './publicity.ts';
 import { listingKey, slugify } from './slug.ts';
-import { parseCleared, parseKeyList, parseSources } from './sources.ts';
+import { parseKeyList, parsePins, parseSources } from './sources.ts';
 import { isoSeconds } from './time.ts';
 import { type IndexFile, type Listing, MEDIA_POLICY } from './types.ts';
 
@@ -19,6 +19,7 @@ export interface CrawlResultEntry {
   commit?: string;
   tier?: string;
   cleared?: boolean;
+  verified?: boolean;
   flags?: string[];
 }
 
@@ -31,6 +32,7 @@ export interface CrawlReport {
 export interface CrawlOptions {
   sourcesText: string;
   clearedText?: string;
+  verifiedText?: string;
   denylistText?: string;
   previous?: { plugins?: Listing[] } | null;
   deps: Deps;
@@ -41,7 +43,12 @@ export async function crawl(options: CrawlOptions): Promise<{ index: IndexFile; 
   const now = options.now ?? Date.now;
   const previous = new Map<string, Listing>();
   for (const p of options.previous?.plugins ?? []) previous.set(p.key, p);
-  const ctx = { now, previous, cleared: parseCleared(options.clearedText ?? '') };
+  const ctx = {
+    now,
+    previous,
+    cleared: parsePins(options.clearedText ?? ''),
+    verified: parsePins(options.verifiedText ?? ''),
+  };
   const denied = new Set(parseKeyList(options.denylistText ?? '').map((k) => k.toLowerCase()));
 
   const results: CrawlResultEntry[] = [];
@@ -88,6 +95,7 @@ export async function crawl(options: CrawlOptions): Promise<{ index: IndexFile; 
       commit: listing.source.commit,
       tier: listing.audit.tier,
       cleared: listing.audit.cleared,
+      verified: listing.verified,
       flags: listing.audit.flags.map((f) => f.code),
     });
   }
@@ -130,12 +138,13 @@ async function main(): Promise<void> {
     sources: { type: 'string' },
     previous: { type: 'string' },
     cleared: { type: 'string' },
+    verified: { type: 'string' },
     denylist: { type: 'string' },
     out: { type: 'string' },
     report: { type: 'string' },
   });
   if (!values.sources || !values.out || !values.report) {
-    console.error('usage: crawl.ts --sources <file> [--denylist <file>] [--cleared <file>] [--previous <index.json>] --out <index.json> --report <report.json>');
+    console.error('usage: crawl.ts --sources <file> [--denylist <file>] [--cleared <file>] [--verified <file>] [--previous <index.json>] --out <index.json> --report <report.json>');
     process.exit(2);
   }
   const readIfExists = (path: string) => (existsSync(path) ? readFileSync(path, 'utf8') : '');
@@ -143,6 +152,7 @@ async function main(): Promise<void> {
   const { index, report } = await crawl({
     sourcesText: readFileSync(values.sources, 'utf8'),
     clearedText: readIfExists(values.cleared ?? join(dirname(values.sources), 'cleared.txt')),
+    verifiedText: readIfExists(values.verified ?? join(dirname(values.sources), 'verified.txt')),
     denylistText: readIfExists(values.denylist ?? join(dirname(values.sources), 'denylist.txt')),
     previous,
     deps: realDeps(),
@@ -160,7 +170,7 @@ async function main(): Promise<void> {
 }
 
 export function describeResult(r: CrawlResultEntry): string {
-  return `${r.status === 'listed' ? 'listed  ' : 'rejected'} ${r.source}${r.reason ? `  ${r.reason}: ${r.detail}` : `  tier=${r.tier} cleared=${r.cleared}${r.flags?.length ? ` flags=${r.flags.join(',')}` : ''}`}`;
+  return `${r.status === 'listed' ? 'listed  ' : 'rejected'} ${r.source}${r.reason ? `  ${r.reason}: ${r.detail}` : `  tier=${r.tier} cleared=${r.cleared} verified=${r.verified}${r.flags?.length ? ` flags=${r.flags.join(',')}` : ''}`}`;
 }
 
 if (import.meta.main) await main();

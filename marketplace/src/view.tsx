@@ -36,8 +36,10 @@ export const listingLink = (slug: string) =>
 export const day = (iso: string) => new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
 export const starLabel = (count: number) => `${count.toLocaleString("en-US")} ${count === 1 ? "star" : "stars"} on GitHub`;
 
-export const trustLabel = (listing: Listing) => (listing.official ? "Official" : "Community · not reviewed");
-export const cardTrustLabel = (listing: Listing) => (listing.official ? "Official" : "Unreviewed");
+export const trustLabel = (listing: Listing) =>
+  listing.official ? "Official" : listing.verified ? "Verified by Buzz" : "Community · not reviewed";
+export const cardTrustLabel = (listing: Listing) => (listing.official ? "Official" : listing.verified ? "Verified" : "Unreviewed");
+const trustTone = (listing: Listing) => (listing.official ? "default" : listing.verified ? "active" : undefined);
 const tierTone = { low: "active", medium: undefined, high: "warn" } as const;
 
 export function slugFromTarget(target: unknown): string | null {
@@ -154,7 +156,7 @@ export function createViews(ctx: Context, capability: PluginsCapability | undefi
 
   function TrustBadge({ listing, compact }: { listing: Listing; compact?: boolean }) {
     return (
-      <span className="bm-badge" data-tone={listing.official ? "default" : undefined} title={compact ? trustLabel(listing) : undefined}>
+      <span className="bm-badge" data-tone={trustTone(listing)} title={compact ? trustLabel(listing) : undefined}>
         {compact ? cardTrustLabel(listing) : trustLabel(listing)}
       </span>
     );
@@ -659,7 +661,9 @@ export function createViews(ctx: Context, capability: PluginsCapability | undefi
         <span className="bm-note">
           {listing.official
             ? "Published by Block."
-            : "Community plugins are indexed automatically from public repositories. Nobody has reviewed this one."}
+            : listing.verified
+              ? "A Buzz maintainer reviewed this exact version. A newer version is unreviewed until it is checked again."
+              : "Community plugins are indexed automatically from public repositories. Nobody has reviewed this one."}
         </span>
       </div>
     );

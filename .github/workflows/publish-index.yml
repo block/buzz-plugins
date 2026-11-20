@@ -9,6 +9,7 @@ on:
       - sources.txt
       - denylist.txt
       - cleared.txt
+      - verified.txt
       - indexer/**
   workflow_dispatch:
 
@@ -45,7 +46,7 @@ jobs:
       - name: Crawl
         run: >-
           node --experimental-strip-types indexer/crawl.ts
-          --sources sources.txt --denylist denylist.txt --cleared cleared.txt
+          --sources sources.txt --denylist denylist.txt --cleared cleared.txt --verified verified.txt
           --previous .data/previous.json --out .data/index.json --report .data/crawl-report.json
 
       - run: node --experimental-strip-types indexer/validate.ts .data/index.json

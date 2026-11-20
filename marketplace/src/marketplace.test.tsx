@@ -17,6 +17,7 @@ const bySlug = (slug: string) => listings.find((plugin) => plugin.slug === slug)
 const byName = (name: string) => listings.find((plugin) => plugin.name === name)!;
 const counter = byName("Counter");
 const toolbox = byName("Agent Toolbox");
+const digest = byName("PR Digest");
 const names = (plugins: readonly Listing[]) => plugins.map((plugin) => plugin.name);
 const rawListing = (overrides: Record<string, unknown> = {}) => ({ ...structuredClone(demoFixture.plugins[0]), ...overrides });
 const rawIndex = (plugins: unknown[]) => ({ ...demoFixture, plugins });
@@ -112,6 +113,7 @@ describe("index parsing", () => {
       rawListing({ source: { ...good.source, repository: "https://github.com/other/place" } }),
       rawListing({ source: { ...good.source, path: "/nested" } }),
       rawListing({ official: true }),
+      rawListing({ verified: "yes" }),
       rawListing({ author: {} }),
       rawListing({ host: undefined }),
       rawListing({ host: { ...good.host, networkOrigins: ["http://insecure.example"] } }),
@@ -284,6 +286,8 @@ describe("pure helpers", () => {
   it("labels trust and stars", () => {
     expect(trustLabel(counter)).toBe("Official");
     expect(trustLabel(toolbox)).toBe("Community · not reviewed");
+    expect(trustLabel(digest)).toBe("Verified by Buzz");
+    expect(trustLabel({ ...digest, verified: undefined })).toBe("Community · not reviewed");
     expect(starLabel(1)).toBe("1 star on GitHub");
     expect(starLabel(1234)).toBe("1,234 stars on GitHub");
   });
@@ -330,6 +334,8 @@ describe("marketplace page", () => {
     const community = screen.getByText("Agent Toolbox", { selector: ".bm-card-name" }).closest(".bm-card") as HTMLElement;
     expect(within(community).getByText("Unreviewed").getAttribute("title")).toBe("Community · not reviewed");
     expect(within(community).getByText("by relaycrew")).toBeTruthy();
+    const verified = screen.getByText("PR Digest", { selector: ".bm-card-name" }).closest(".bm-card") as HTMLElement;
+    expect(within(verified).getByText("Verified").getAttribute("title")).toBe("Verified by Buzz");
     expect(screen.queryByText(/Showing the index built into this version/)).toBeNull();
     expect(screen.getByText(/Index updated Nov 5, 2026\. Nothing about what you install is sent anywhere\./)).toBeTruthy();
     expect(screen.queryByRole("switch")).toBeNull();
