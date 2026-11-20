@@ -139,7 +139,7 @@ The published index is `https://raw.githubusercontent.com/<owner>/<repo>/index/i
 - `host.networkOrigins` is exactly `https://api.github.com` and `https://raw.githubusercontent.com`. The index is read from the `index` branch on `raw.githubusercontent.com`. Don't add any `processes` or `commands`.
 - What the plugin does:
   - It reads the published `index.json`, and falls back to a bundled copy of `fixtures/index.json`.
-  - Sort choices are Recently updated, Most stars and A–Z, plus Category and search. Each card shows the author, its stars, when it was last updated, and an Official, "Verified by Buzz" or "Community · not reviewed" label.
+  - Sort choices are Recently updated, Most stars and A–Z, plus Category and search. Each card shows the author, its stars, when it was last updated, and an Official or "Community · not reviewed" label. A verified plugin carries a check mark on its own name, on the card and on its page, instead of a label beside its author; its audit says "Verified by Buzz".
   - The listing page shows the audit tier and flags above **Add to Buzz**, and an access summary from `host`.
   - **Add to Buzz** uses `ctx.reflect.get("pluginInstaller").requestInstall({repository, reference: ref, commit, path})`. Older hosts get the manual Git import steps.
   - The header has **Add your plugin**. It opens a dialog that states the requirements: a built `manifest.json` and `plugin.js` committed on a public branch or tag, and an optional `buzz-listing.yaml`. The author enters `owner/repo`, `owner/repo/path` or a github.com link, plus an optional branch or tag.

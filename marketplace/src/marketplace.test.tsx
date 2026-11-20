@@ -9,7 +9,7 @@ import { apply } from "./index";
 import { sourceOf } from "./install";
 import { createMarkdown } from "./markdown";
 import { checkSource, listingLinks, parseSourceInput, sourceLine } from "./submit";
-import { listingLink, PAGE_ID, PLUGIN_ID, slugFromTarget, starLabel, trustLabel } from "./view";
+import { listingLink, PAGE_ID, PLUGIN_ID, slugFromTarget, starLabel, trustLabel, VERIFIED_LABEL } from "./view";
 
 const demoIndex = parseIndex(demoFixture)!;
 const listings = demoIndex.plugins;
@@ -335,7 +335,9 @@ describe("marketplace page", () => {
     expect(within(community).getByText("Unreviewed").getAttribute("title")).toBe("Community · not reviewed");
     expect(within(community).getByText("by relaycrew")).toBeTruthy();
     const verified = screen.getByText("PR Digest", { selector: ".bm-card-name" }).closest(".bm-card") as HTMLElement;
-    expect(within(verified).getByText("Verified").getAttribute("title")).toBe("Verified by Buzz");
+    expect(within(verified).getByRole("img", { name: VERIFIED_LABEL }).closest(".bm-card-title")).toBe(within(verified).getByText("PR Digest").parentElement);
+    expect(within(verified).queryByText(/Verified|Unreviewed/, { selector: ".bm-badge" })).toBeNull();
+    expect(within(community).queryByRole("img", { name: VERIFIED_LABEL })).toBeNull();
     expect(screen.queryByText(/Showing the index built into this version/)).toBeNull();
     expect(screen.getByText(/Index updated Nov 5, 2026\. Nothing about what you install is sent anywhere\./)).toBeTruthy();
     expect(screen.queryByRole("switch")).toBeNull();
@@ -421,6 +423,21 @@ describe("marketplace page", () => {
     expect(access.textContent).toContain("relaycrew-helper --serve");
     expect(access.textContent).toContain("Read files on this Mac");
     expect(access.textContent).toContain("Serve tools to your agents (MCP)");
+  });
+
+  it("marks a verified plugin on its own name and in its audit, and leaves others unmarked", async () => {
+    const { registered } = fakeContext(installer(vi.fn(async () => "installed")));
+    const Page = registered[0].component;
+    await act(async () => render(<Page navigation={{ target: targetFor(digest.slug) }} />));
+    await screen.findByRole("button", { name: "Add to Buzz" });
+    expect(within(screen.getByRole("heading", { level: 1 })).getByRole("img", { name: VERIFIED_LABEL })).toBeTruthy();
+    const audit = screen.getByLabelText("Audit");
+    expect(within(audit).getByText("Verified by Buzz")).toBeTruthy();
+    expect(audit.textContent).toContain("reviewed this exact version");
+    cleanup();
+    await act(async () => render(<Page navigation={{ target: targetFor(toolbox.slug) }} />));
+    await screen.findByRole("button", { name: "Add to Buzz" });
+    expect(screen.queryByRole("img", { name: VERIFIED_LABEL })).toBeNull();
   });
 
   it("shows setup steps, links, demo media and a clear audit on a reviewed listing", async () => {

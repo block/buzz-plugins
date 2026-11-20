@@ -33,6 +33,9 @@ export const styles = `
 .bm-card-body { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; padding: var(--space-3) var(--space-4) var(--space-4); }
 .bm-card-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); min-width: 0; }
 .bm-card-name { font-weight: var(--font-weight-semibold); font-size: var(--text-body); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bm-card-title { display: flex; align-items: center; gap: var(--space-1); min-width: 0; }
+.bm-verified { flex: none; color: var(--text-success); }
+.bm-detail-name .bm-verified { width: 0.8em; height: 0.8em; margin-inline-start: var(--space-2); vertical-align: -0.05em; }
 .bm-card-author { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bm-card-meta.bm-card-footer { margin-top: auto; padding-top: var(--space-2); }
 .bm-card-tagline { color: var(--text-subtle); font-size: var(--text-body-sm); line-height: var(--text-body-sm--line-height);
