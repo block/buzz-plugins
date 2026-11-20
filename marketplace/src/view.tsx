@@ -599,30 +599,11 @@ export function createViews(ctx: Context, capability: PluginsCapability | undefi
             <h1 className="bm-title">Community Marketplace</h1>
             <p className="bm-subtitle">Open plugins from public Git repositories.</p>
           </div>
-          <div className="bm-header-actions">
-            <label className="bm-search">
-              <Search />
-              <input
-                type="search"
-                placeholder="Search plugins"
-                aria-label="Search plugins"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-              />
-            </label>
-            <button className="bm-button" data-variant="quiet" onClick={onAdd}>
-              Add your plugin
-            </button>
-          </div>
+          <button className="bm-button" data-variant="quiet" onClick={onAdd}>
+            Add your plugin
+          </button>
         </header>
         <div className="bm-toolbar">
-          <div className="bm-chips" role="group" aria-label="Sort">
-            {sorts.map((entry) => (
-              <button key={entry.id} className="bm-chip" aria-pressed={sort === entry.id} onClick={() => setSort(entry.id)}>
-                {entry.label}
-              </button>
-            ))}
-          </div>
           <div className="bm-chips" role="group" aria-label="Categories">
             <button className="bm-chip" aria-pressed={category === null} onClick={() => setCategory(null)}>
               All
@@ -633,7 +614,24 @@ export function createViews(ctx: Context, capability: PluginsCapability | undefi
               </button>
             ))}
           </div>
+          <div className="bm-chips bm-sort" role="group" aria-label="Sort">
+            {sorts.map((entry) => (
+              <button key={entry.id} className="bm-chip" aria-pressed={sort === entry.id} onClick={() => setSort(entry.id)}>
+                {entry.label}
+              </button>
+            ))}
+          </div>
         </div>
+        <label className="bm-search">
+          <Search />
+          <input
+            type="search"
+            placeholder="Search plugins"
+            aria-label="Search plugins"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </label>
         <h2 className="bm-section-title">{heading}</h2>
         {visible.length ? (
           <div className="bm-grid">
