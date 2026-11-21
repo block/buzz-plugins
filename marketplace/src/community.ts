@@ -26,11 +26,14 @@ export function relayOf(ctx: Context): Relay | undefined {
   return (ctx as unknown as { reflect?: { get?(name: string): unknown } }).reflect?.get?.("relay") as Relay | undefined;
 }
 
-/** Changes when a different community, or a different person, is connected; empty until one is. */
+/** Names the connected community and person once this Buzz can read its repositories; empty until then. */
 export function connection(relay: Relay | undefined): string {
   const snapshot = relay?.snapshot();
-  return snapshot?.status === "ready" ? (snapshot.scope ?? "ready") : "";
+  return snapshot?.status === "ready" && snapshot.session?.projectGit ? (snapshot.scope ?? "ready") : "";
 }
+
+export const SHARE_PROMPT =
+  "Share my Buzz plugin with this channel. Push the folder that holds its built manifest.json and plugin.js to this channel's git repository, creating the repository if there is none, then tell me its name.";
 
 const ANNOUNCEMENT = 30617;
 const STATE = 30618;

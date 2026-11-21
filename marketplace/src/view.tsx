@@ -14,7 +14,7 @@ import {
   tierLabels,
 } from "./catalog";
 import { activePluginIds, type InstallationStatus, type InstallResult, type PluginsCapability, sourceOf } from "./install";
-import { connection, loadCommunity, relayOf } from "./community";
+import { connection, loadCommunity, relayOf, SHARE_PROMPT } from "./community";
 import { createMarkdown } from "./markdown";
 import { type CheckedSource, checkSource, describeSource, listingLinks, parseSourceInput, sourceKey, sourceLine } from "./submit";
 
@@ -435,7 +435,8 @@ export function createViews(ctx: Context, capability: PluginsCapability | undefi
     | { step: "rejected"; message: string }
     | { step: "ready"; source: CheckedSource; listed?: Listing };
 
-  function AddPlugin({ index, onClose }: { index: Index; onClose(): void }) {
+  function AddPlugin({ index, canShare, onClose }: { index: Index; canShare: boolean; onClose(): void }) {
+    const [everyone, setEveryone] = useState(!canShare);
     const [repository, setRepository] = useState("");
     const [ref, setRef] = useState("");
     const [state, setState] = useState<AddState>({ step: "idle" });
@@ -455,108 +456,148 @@ export function createViews(ctx: Context, capability: PluginsCapability | undefi
     return (
       <Dialog label="Add your plugin" onClose={onClose}>
         <h2>Add your plugin</h2>
-        <p className="bm-dialog-lede">List a Buzz plugin whose source is in a public GitHub repository. It needs:</p>
-        <ul className="bm-requirements">
-          <li>
-            A built <code>manifest.json</code> and <code>plugin.js</code> committed on a branch or tag, at the repository root or in a folder.
-          </li>
-          <li>
-            Optionally, a <code>buzz-listing.yaml</code> next to them with a tagline, description, category, tags and screenshots.
-          </li>
-        </ul>
-        <form
-          className="bm-form"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (!busy) void run();
-          }}
-        >
-          <label className="bm-field">
-            <span>Repository</span>
-            <input
-              value={repository}
-              placeholder="owner/repo or owner/repo/path/to/plugin"
-              spellCheck={false}
-              autoCapitalize="off"
-              autoComplete="off"
-              onChange={(event) => setRepository(event.target.value)}
-            />
-          </label>
-          <label className="bm-field">
-            <span>Branch or tag (optional)</span>
-            <input
-              value={ref}
-              placeholder="Default branch"
-              spellCheck={false}
-              autoCapitalize="off"
-              autoComplete="off"
-              onChange={(event) => setRef(event.target.value)}
-            />
-          </label>
-          <div className="bm-check" role="status" aria-live="polite">
-            {state.step === "invalid" ? (
-              <p className="bm-check-error">Enter a GitHub repository as owner/repo, owner/repo/folder or a github.com link.</p>
-            ) : state.step === "checking" ? (
-              <p>Checking that the repository is public and has a built plugin…</p>
-            ) : state.step === "rejected" ? (
-              <p className="bm-check-error">{state.message}</p>
-            ) : null}
-            {found ? (
-              <div className="bm-check-found">
-                <strong>{found.name}</strong>
-                <span className="bm-note">
-                  {found.id} · {describeSource(found)} @ {found.ref}
-                </span>
-                {found.description ? <span className="bm-check-description">{found.description}</span> : null}
-              </div>
-            ) : null}
-            {state.step === "ready" && state.listed ? (
-              <p className="bm-check-success">{state.listed.name} is already listed.</p>
-            ) : found ? (
-              <>
-                <p className="bm-check-success">
-                  It can be listed. Add this line to <code>sources.txt</code> in a pull request, or ask for it in an issue:
-                </p>
-                <Copy value={sourceLine(found)} />
-              </>
-            ) : null}
-          </div>
-          <p className="bm-note">
-            Listings are unreviewed community content. Buzz still shows what a plugin can access, and the exact commit, before anyone installs it.
-          </p>
-          <div className="bm-actions">
-            <button type="button" className="bm-button" data-variant="quiet" onClick={onClose}>
-              {found ? "Done" : "Cancel"}
+        {canShare ? (
+          <div className="bm-chips" role="group" aria-label="Who gets it">
+            <button className="bm-chip" aria-pressed={!everyone} onClick={() => setEveryone(false)}>
+              This community
             </button>
-            {state.step === "ready" && state.listed ? (
-              <button
-                type="button"
-                className="bm-button"
-                onClick={() => {
-                  void open(state.listed!.slug);
-                  onClose();
-                }}
-              >
-                View listing
-              </button>
-            ) : links ? (
-              <>
-                <a className="bm-button" data-variant="quiet" href={links.issue} target="_blank" rel="noreferrer">
-                  Request in an issue
-                </a>
-                <a className="bm-button" href={links.pullRequest} target="_blank" rel="noreferrer">
-                  Open a pull request
-                </a>
-              </>
-            ) : (
-              <button type="submit" className="bm-button" disabled={busy || !repository.trim()}>
-                {busy ? "Checking…" : "Check"}
-              </button>
-            )}
+            <button className="bm-chip" aria-pressed={everyone} onClick={() => setEveryone(true)}>
+              Everyone
+            </button>
           </div>
-        </form>
+        ) : null}
+        {everyone ? publicListing() : communityShare()}
       </Dialog>
     );
+
+    // Called, not rendered: as components they would remount, and lose the form, on every keystroke.
+    function communityShare() {
+      return (
+        <>
+          <p className="bm-dialog-lede">
+            Push a plugin you run in Buzz to a git repository in one of this community's channels. It then shows under From this community, to
+            the people in that channel.
+          </p>
+          <p className="bm-dialog-lede">
+            The repository needs the built <code>manifest.json</code> and <code>plugin.js</code>, at its root or in a folder. Your agent can do
+            it for you. Ask it in the channel:
+          </p>
+          <Copy value={SHARE_PROMPT} />
+          <div className="bm-actions">
+            <button type="button" className="bm-button" onClick={onClose}>
+              Done
+            </button>
+          </div>
+        </>
+      );
+    }
+
+    function publicListing() {
+      return (
+        <>
+          <p className="bm-dialog-lede">List a Buzz plugin whose source is in a public GitHub repository. It needs:</p>
+          <ul className="bm-requirements">
+            <li>
+              A built <code>manifest.json</code> and <code>plugin.js</code> committed on a branch or tag, at the repository root or in a folder.
+            </li>
+            <li>
+              Optionally, a <code>buzz-listing.yaml</code> next to them with a tagline, description, category, tags and screenshots.
+            </li>
+          </ul>
+          <form
+            className="bm-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (!busy) void run();
+            }}
+          >
+            <label className="bm-field">
+              <span>Repository</span>
+              <input
+                value={repository}
+                placeholder="owner/repo or owner/repo/path/to/plugin"
+                spellCheck={false}
+                autoCapitalize="off"
+                autoComplete="off"
+                onChange={(event) => setRepository(event.target.value)}
+              />
+            </label>
+            <label className="bm-field">
+              <span>Branch or tag (optional)</span>
+              <input
+                value={ref}
+                placeholder="Default branch"
+                spellCheck={false}
+                autoCapitalize="off"
+                autoComplete="off"
+                onChange={(event) => setRef(event.target.value)}
+              />
+            </label>
+            <div className="bm-check" role="status" aria-live="polite">
+              {state.step === "invalid" ? (
+                <p className="bm-check-error">Enter a GitHub repository as owner/repo, owner/repo/folder or a github.com link.</p>
+              ) : state.step === "checking" ? (
+                <p>Checking that the repository is public and has a built plugin…</p>
+              ) : state.step === "rejected" ? (
+                <p className="bm-check-error">{state.message}</p>
+              ) : null}
+              {found ? (
+                <div className="bm-check-found">
+                  <strong>{found.name}</strong>
+                  <span className="bm-note">
+                    {found.id} · {describeSource(found)} @ {found.ref}
+                  </span>
+                  {found.description ? <span className="bm-check-description">{found.description}</span> : null}
+                </div>
+              ) : null}
+              {state.step === "ready" && state.listed ? (
+                <p className="bm-check-success">{state.listed.name} is already listed.</p>
+              ) : found ? (
+                <>
+                  <p className="bm-check-success">
+                    It can be listed. Add this line to <code>sources.txt</code> in a pull request, or ask for it in an issue:
+                  </p>
+                  <Copy value={sourceLine(found)} />
+                </>
+              ) : null}
+            </div>
+            <p className="bm-note">
+              Listings are unreviewed community content. Buzz still shows what a plugin can access, and the exact commit, before anyone installs it.
+            </p>
+            <div className="bm-actions">
+              <button type="button" className="bm-button" data-variant="quiet" onClick={onClose}>
+                {found ? "Done" : "Cancel"}
+              </button>
+              {state.step === "ready" && state.listed ? (
+                <button
+                  type="button"
+                  className="bm-button"
+                  onClick={() => {
+                    void open(state.listed!.slug);
+                    onClose();
+                  }}
+                >
+                  View listing
+                </button>
+              ) : links ? (
+                <>
+                  <a className="bm-button" data-variant="quiet" href={links.issue} target="_blank" rel="noreferrer">
+                    Request in an issue
+                  </a>
+                  <a className="bm-button" href={links.pullRequest} target="_blank" rel="noreferrer">
+                    Open a pull request
+                  </a>
+                </>
+              ) : (
+                <button type="submit" className="bm-button" disabled={busy || !repository.trim()}>
+                  {busy ? "Checking…" : "Check"}
+                </button>
+              )}
+            </div>
+          </form>
+        </>
+      );
+    }
   }
 
   function Card({ listing, onManual }: { listing: Listing; onManual(listing: Listing): void }) {
@@ -885,7 +926,7 @@ export function createViews(ctx: Context, capability: PluginsCapability | undefi
           ) : null}
         </div>
         {manual ? <ManualInstall listing={manual} onClose={() => setManual(null)} /> : null}
-        {adding && state ? <AddPlugin index={state.index} onClose={() => setAdding(false)} /> : null}
+        {adding && state ? <AddPlugin index={state.index} canShare={!!connected} onClose={() => setAdding(false)} /> : null}
       </div>
     );
   };

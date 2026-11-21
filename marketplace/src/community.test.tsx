@@ -3,7 +3,7 @@ import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import demoFixture from "../demo/index.demo.json";
 import { INDEX_URL } from "./catalog";
-import { communityListing, loadCommunity, pluginFolders } from "./community";
+import { communityListing, loadCommunity, pluginFolders, SHARE_PROMPT } from "./community";
 import { apply } from "./index";
 
 const OWNER = "a".repeat(64);
@@ -163,5 +163,46 @@ describe("From this community", () => {
     expect(within(audit).getByText(/Not scanned/)).toBeTruthy();
     expect(within(audit).queryByText(/hasn't cleared/)).toBeNull();
     expect(screen.getByText("About the shelf.")).toBeTruthy();
+  });
+});
+
+describe("Add your plugin, with a community to share in", () => {
+  async function dialogWith(relay: unknown) {
+    const registered: { component: React.ComponentType }[] = [];
+    apply({
+      react: React,
+      effect: vi.fn(),
+      pages: { register: vi.fn((entry) => registered.push(entry)), subscribe: vi.fn(() => () => {}), snapshot: () => [] },
+      navigation: { open: vi.fn() },
+      host: { request: vi.fn(async () => ({ status: 200, headers: {}, body: JSON.stringify(demoFixture) })) },
+      reflect: { get: (name: string) => (name === "relay" ? relay : undefined) },
+    } as never);
+    const Page = registered[0].component;
+    await act(async () => render(<Page />));
+    fireEvent.click(await screen.findByRole("button", { name: "Add your plugin" }));
+    return screen.getByRole("dialog", { name: "Add your plugin" });
+  }
+
+  it("leads with sharing in this community and a request to hand an agent", async () => {
+    const dialog = await dialogWith(relayWith([]).relay);
+    expect(within(dialog).getByRole("button", { name: "This community" }).getAttribute("aria-pressed")).toBe("true");
+    expect(dialog.textContent).toContain("From this community");
+    expect(within(dialog).getByTitle(SHARE_PROMPT)).toBeTruthy();
+    expect(within(dialog).queryByRole("textbox")).toBeNull();
+  });
+
+  it("keeps what is typed in the public form", async () => {
+    const dialog = await dialogWith(relayWith([]).relay);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Everyone" }));
+    const [repository] = within(dialog).getAllByRole("textbox") as HTMLInputElement[];
+    fireEvent.change(repository!, { target: { value: "octo/plug" } });
+    expect((within(dialog).getAllByRole("textbox")[0] as HTMLInputElement).value).toBe("octo/plug");
+    expect(within(dialog).getAllByRole("textbox")[0]).toBe(repository);
+  });
+
+  it("offers only the public form when this Buzz can't read repositories", async () => {
+    const dialog = await dialogWith(relayWith([], { git: false }).relay);
+    expect(within(dialog).queryByRole("button", { name: "This community" })).toBeNull();
+    expect(within(dialog).getAllByRole("textbox")).toHaveLength(2);
   });
 });
