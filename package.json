@@ -12,6 +12,7 @@
     "test": "node --experimental-strip-types --test \"indexer/*.test.ts\"",
     "crawl": "node --experimental-strip-types indexer/crawl.ts --sources sources.txt --previous .data/index.json --out .data/index.json --report .data/crawl-report.json",
     "check-sources": "node --experimental-strip-types indexer/check-sources.ts",
+    "check-plugin": "node --experimental-strip-types indexer/check-plugin.ts",
     "add": "node --experimental-strip-types indexer/add.ts",
     "validate": "node --experimental-strip-types indexer/validate.ts"
   },

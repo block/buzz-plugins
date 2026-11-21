@@ -16,10 +16,13 @@ https://raw.githubusercontent.com/block/buzz-plugins/index/index.json
 | [`.github/`](./.github) | The workflows that publish the index and check new sources, and the list-a-plugin issue form |
 | [`marketplace/`](./marketplace) | The Community Marketplace Buzz plugin that browses the index |
 | [`template/`](./template) | A starter plugin for authors |
+| [`PUBLISHING.md`](./PUBLISHING.md) | The checklist for getting a plugin listed, and the local check to run first |
 | [`SPEC.md`](./SPEC.md) | The contract: listing keys, publicity check, audit, `index.json`, publishing |
 | [`VERIFICATION.md`](./VERIFICATION.md) | How a listing becomes Verified by Buzz, and how that is withdrawn |
 
 ## Listing a plugin
+
+[`PUBLISHING.md`](./PUBLISHING.md) is the full checklist, written for a person or their agent to follow. `pnpm run check-plugin <folder>` checks a plugin folder before you push it. In short:
 
 1. Start from [`template/`](./template), a minimal plugin with a build script and an example `buzz-listing.yaml`, or bring your own.
 2. Commit a built `manifest.json` and `plugin.js` to a public GitHub repository, at the root or in a subfolder, on a branch or tag.
