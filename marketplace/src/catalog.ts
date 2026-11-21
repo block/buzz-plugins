@@ -14,7 +14,8 @@ export type Listing = Readonly<{
   description?: string;
   category: string;
   tags?: readonly string[];
-  author: Readonly<{ github: string }>;
+  /** A GitHub owner for a public listing, or the member who shares it in this community. */
+  author: Readonly<{ github: string } | { member: string }>;
   official: boolean;
   /** Absent in an index published before the verified tier. */
   verified?: boolean;
@@ -88,7 +89,7 @@ function validListing(value: unknown): value is Listing {
     (listing.description === undefined || typeof listing.description === "string") &&
     Object.hasOwn(categories, listing.category) &&
     strings(listing.tags) &&
-    text(listing.author?.github) &&
+    text((listing.author as { github?: unknown } | undefined)?.github) &&
     listing.official === (parts.owner === "block") &&
     flag(listing.verified) &&
     source?.repository === `https://github.com/${parts.owner}/${parts.repo}` &&
@@ -150,6 +151,9 @@ export async function loadIndex(host: Context["host"] | undefined): Promise<{ in
   }
 }
 
+export const shared = (listing: Listing) => "member" in listing.author;
+export const authorName = (listing: Listing) => ("member" in listing.author ? listing.author.member : listing.author.github);
+
 const updated = (listing: Listing) => Date.parse(listing.updatedAt ?? "") || 0;
 const byName = (a: Listing, b: Listing) => a.name.localeCompare(b.name, "en", { sensitivity: "base" }) || (a.key < b.key ? -1 : 1);
 const comparators: Readonly<Record<Sort, (a: Listing, b: Listing) => number>> = {
@@ -158,7 +162,7 @@ const comparators: Readonly<Record<Sort, (a: Listing, b: Listing) => number>> = 
   name: byName,
 };
 
-export function sorted(index: Index, sort: Sort): Listing[] {
+export function sorted(index: Pick<Index, "plugins">, sort: Sort): Listing[] {
   return [...index.plugins].sort(comparators[sort]);
 }
 
@@ -167,7 +171,7 @@ export function search(plugins: readonly Listing[], query: string, category: str
   return plugins.filter((plugin) => {
     if (category && plugin.category !== category) return false;
     if (!words.length) return true;
-    const haystack = [plugin.name, plugin.tagline, plugin.description, plugin.author.github, ...(plugin.tags ?? [])]
+    const haystack = [plugin.name, plugin.tagline, plugin.description, authorName(plugin), ...(plugin.tags ?? [])]
       .join(" ")
       .toLowerCase();
     return words.every((word) => haystack.includes(word));

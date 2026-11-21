@@ -1,17 +1,20 @@
 import type { Context } from "@buzz/author";
 import {
   accessSummary,
+  authorName,
   categories,
   type Index,
   type Listing,
   loadIndex,
   search,
+  shared,
   type Sort,
   sorted,
   sorts,
   tierLabels,
 } from "./catalog";
 import { activePluginIds, type InstallationStatus, type InstallResult, type PluginsCapability, sourceOf } from "./install";
+import { connection, loadCommunity, relayOf } from "./community";
 import { createMarkdown } from "./markdown";
 import { type CheckedSource, checkSource, describeSource, listingLinks, parseSourceInput, sourceKey, sourceLine } from "./submit";
 
@@ -48,9 +51,16 @@ export const day = (iso: string) => new Date(iso).toLocaleDateString("en-US", { 
 export const starLabel = (count: number) => `${count.toLocaleString("en-US")} ${count === 1 ? "star" : "stars"} on GitHub`;
 
 export const trustLabel = (listing: Listing) =>
-  listing.official ? "Official" : listing.verified ? "Verified by Buzz" : "Community · not reviewed";
+  shared(listing)
+    ? "Shared here · not reviewed"
+    : listing.official
+      ? "Official"
+      : listing.verified
+        ? "Verified by Buzz"
+        : "Community · not reviewed";
 // A verified card carries the mark on its name instead of a label beside its author.
-export const cardTrustLabel = (listing: Listing) => (listing.official ? "Official" : listing.verified ? null : "Unreviewed");
+export const cardTrustLabel = (listing: Listing) =>
+  shared(listing) ? "Shared here" : listing.official ? "Official" : listing.verified ? null : "Unreviewed";
 const trustTone = (listing: Listing) => (listing.official ? "default" : listing.verified ? "active" : undefined);
 const tierTone = { low: "active", medium: undefined, high: "warn" } as const;
 
@@ -116,6 +126,7 @@ export function createViews(ctx: Context, capability: PluginsCapability | undefi
     }
   };
   const noSubscription = () => () => {};
+  const relay = relayOf(ctx);
   const useInstallationStatus = (listing: Listing): InstallationStatus => {
     const subscribeStatus = React.useCallback(
       (listener: () => void) => {
@@ -572,7 +583,7 @@ export function createViews(ctx: Context, capability: PluginsCapability | undefi
             ) : null}
           </div>
           <div className="bm-card-row bm-card-meta">
-            <span className="bm-card-author">by {listing.author.github}</span>
+            <span className="bm-card-author">by {authorName(listing)}</span>
             <TrustBadge listing={listing} compact />
           </div>
           <div className="bm-card-row bm-card-meta bm-card-footer">
@@ -584,12 +595,23 @@ export function createViews(ctx: Context, capability: PluginsCapability | undefi
     );
   }
 
-  function Browse({ index, onManual, onAdd }: { index: Index; onManual(listing: Listing): void; onAdd(): void }) {
+  function Browse({
+    index,
+    community,
+    onManual,
+    onAdd,
+  }: {
+    index: Index;
+    community: readonly Listing[];
+    onManual(listing: Listing): void;
+    onAdd(): void;
+  }) {
     const [query, setQuery] = useState("");
     const [category, setCategory] = useState<string | null>(null);
     const [sort, setSort] = useState<Sort>("updated");
     const visible = useMemo(() => search(sorted(index, sort), query, category), [index, sort, query, category]);
-    const present = Object.keys(categories).filter((slug) => index.plugins.some((plugin) => plugin.category === slug));
+    const here = useMemo(() => search(sorted({ plugins: community }, sort), query, category), [community, sort, query, category]);
+    const present = Object.keys(categories).filter((slug) => [...index.plugins, ...community].some((plugin) => plugin.category === slug));
     const heading =
       query || category ? `${visible.length} ${visible.length === 1 ? "plugin" : "plugins"}` : sorts.find((entry) => entry.id === sort)?.label;
     return (
@@ -632,6 +654,16 @@ export function createViews(ctx: Context, capability: PluginsCapability | undefi
             onChange={(event) => setQuery(event.target.value)}
           />
         </label>
+        {here.length ? (
+          <>
+            <h2 className="bm-section-title">From this community</h2>
+            <div className="bm-grid">
+              {here.map((listing) => (
+                <Card key={listing.slug} listing={listing} onManual={onManual} />
+              ))}
+            </div>
+          </>
+        ) : null}
         <h2 className="bm-section-title">{heading}</h2>
         {visible.length ? (
           <div className="bm-grid">
@@ -657,7 +689,9 @@ export function createViews(ctx: Context, capability: PluginsCapability | undefi
           </span>
           <TrustBadge listing={listing} />
         </div>
-        {audit.flags.length ? (
+        {shared(listing) ? (
+          <span className="bm-note">Not scanned. Only public listings get the automated scan.</span>
+        ) : audit.flags.length ? (
           <ul className="bm-flags">
             {audit.flags.map((flag) => (
               <li key={flag.code} className="bm-flag">
@@ -670,11 +704,13 @@ export function createViews(ctx: Context, capability: PluginsCapability | undefi
           <span className="bm-note">No flags from the automated scan.</span>
         )}
         {audit.accessChanged ? <span className="bm-note bm-warning">What it can access changed since the last index.</span> : null}
-        {!audit.cleared ? (
+        {!audit.cleared && !shared(listing) ? (
           <span className="bm-note bm-warning">A maintainer hasn't cleared this version yet.</span>
         ) : null}
         <span className="bm-note">
-          {listing.official
+          {shared(listing)
+            ? "A member keeps this plugin in a git repository on this community. Only people who can read that repository see it, and nobody has reviewed it."
+            : listing.official
             ? "Published by Block."
             : listing.verified
               ? "A Buzz maintainer reviewed this exact version. A newer version is unreviewed until it is checked again."
@@ -765,7 +801,7 @@ export function createViews(ctx: Context, capability: PluginsCapability | undefi
               <h3>About</h3>
               <dl className="bm-kv">
                 <dt>Author</dt>
-                <dd>{listing.author.github}</dd>
+                <dd>{authorName(listing)}</dd>
                 <dt>Category</dt>
                 <dd>{categories[listing.category] ?? listing.category}</dd>
                 {listing.stars ? (
@@ -780,9 +816,13 @@ export function createViews(ctx: Context, capability: PluginsCapability | undefi
                 </dd>
                 <dt>Source</dt>
                 <dd>
-                  <a href={listing.source.repository} target="_blank" rel="noreferrer">
-                    {listing.key.replace(/^github\.com\//, "")}
-                  </a>
+                  {shared(listing) ? (
+                    listing.key.split("/").slice(3).join("/")
+                  ) : (
+                    <a href={listing.source.repository} target="_blank" rel="noreferrer">
+                      {listing.key.replace(/^github\.com\//, "")}
+                    </a>
+                  )}
                 </dd>
               </dl>
               {links.map(([label, url]) => (
@@ -801,6 +841,7 @@ export function createViews(ctx: Context, capability: PluginsCapability | undefi
     const [state, setState] = useState<{ index: Index; live: boolean } | null>(null);
     const [manual, setManual] = useState<Listing | null>(null);
     const [adding, setAdding] = useState(false);
+    const [community, setCommunity] = useState<readonly Listing[]>([]);
     useEffect(() => {
       let current = true;
       void loadIndex(ctx.host).then((result) => {
@@ -810,8 +851,22 @@ export function createViews(ctx: Context, capability: PluginsCapability | undefi
         current = false;
       };
     }, []);
+    // Apart from the public index, which never waits on the community's repositories.
+    const connected = useSyncExternalStore(relay?.subscribe ?? noSubscription, () => connection(relay));
+    useEffect(() => {
+      setCommunity([]);
+      if (!connected) return;
+      const controller = new AbortController();
+      loadCommunity(ctx, controller.signal).then(
+        (listings) => {
+          if (!controller.signal.aborted) setCommunity(listings);
+        },
+        () => {},
+      );
+      return () => controller.abort();
+    }, [connected]);
     const slug = slugFromTarget(navigation?.target);
-    const listing = slug ? state?.index.plugins.find((plugin) => plugin.slug === slug) : undefined;
+    const listing = slug ? [...community, ...(state?.index.plugins ?? [])].find((plugin) => plugin.slug === slug) : undefined;
     return (
       <div className="bm-page">
         <div className="bm-inner">
@@ -820,7 +875,7 @@ export function createViews(ctx: Context, capability: PluginsCapability | undefi
           ) : listing ? (
             <Detail key={listing.slug} listing={listing} onManual={setManual} />
           ) : (
-            <Browse index={state.index} onManual={setManual} onAdd={() => setAdding(true)} />
+            <Browse index={state.index} community={community} onManual={setManual} onAdd={() => setAdding(true)} />
           )}
           {state ? (
             <footer className="bm-footer">
