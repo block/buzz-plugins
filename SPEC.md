@@ -11,6 +11,7 @@ SPEC.md
 sources.txt           listed sources, one per line: <repository> <ref> [path]
 denylist.txt          listing keys never shown, one per line
 cleared.txt           <key> <commit> pairs a maintainer has cleared
+verified.txt          <key> <commit> pairs a maintainer has reviewed
 fixtures/index.json   a sample index the plugin and tests use
 indexer/              crawl, publicity check, audit, listing metadata, build index.json, source checks
 .github/              publish and check workflows, and the list-a-plugin issue form
@@ -77,7 +78,15 @@ Each crawled commit gets an audit:
   - `size`: `plugin.js` over 3 MiB.
 - `accessChanged`: true when the declared access differs from the previous index's pin for the same key.
 
-A listing whose tier is `high`, or that has any flag, gets `audit.cleared: false` unless its key appears in `cleared.txt` with that commit (a maintainer clearing it). Uncleared listings stay in the index; the marketplace says nobody has cleared that version.
+A listing whose tier is `high`, or that has any flag, gets `audit.cleared: false` unless its key appears in `cleared.txt` with that commit (a maintainer clearing it). `verified.txt` doesn't clear a listing. Uncleared listings stay in the index; the marketplace says nobody has cleared that version.
+
+## Verified
+
+`verified.txt` holds `<key> <commit>` pairs, in the same form as `cleared.txt`. A listing gets `verified: true` only when the commit the crawl resolved is paired with its key there (keys and commits compare case-insensitively). A source that moves to a new commit is `verified: false` again until that commit is added. Lines for other commits are ignored and stay as history.
+
+A verified listing carries only what its commit pins: `demo` media whose URL is on `raw.githubusercontent.com` at that commit, and `links.repository`. Other media and `links.docs`/`links.support` are dropped from the entry, since they can change after the review. Its `audit` is the same as it would be unverified.
+
+`verified` is about a review and `official` is about the owner; neither implies the other. [`VERIFICATION.md`](./VERIFICATION.md) is the review process.
 
 ## index.json (schemaVersion 1)
 
@@ -98,6 +107,7 @@ A listing whose tier is `high`, or that has any flag, gets `audit.cleared: false
       "tags": ["projects"],
       "author": { "github": "nickhenggeler" },
       "official": false,
+      "verified": false,
       "source": { "repository": "https://github.com/nickhenggeler/buzz-projects-plugin", "ref": "main", "commit": "<40-hex>", "path": "" },
       "host": { "networkOrigins": [], "processes": [], "commands": [], "files": false, "mcp": false, "agentHooks": false },
       "audit": { "tier": "low", "flags": [], "accessChanged": false, "cleared": true, "checkedAt": "..." },
@@ -111,13 +121,13 @@ A listing whose tier is `high`, or that has any flag, gets `audit.cleared: false
 }
 ```
 
-`official` is true when the owner is `block`. `host` is copied from the manifest's `host` and normalized: process and command entries become display strings such as `my-cli sync`. `source.path` is `""` for the repository root and never starts or ends with `/`.
+`official` is true when the owner is `block`. `verified` was added without a schema version change, so readers treat a listing without it as unverified. `host` is copied from the manifest's `host` and normalized: process and command entries become display strings such as `my-cli sync`. `source.path` is `""` for the repository root and never starts or ends with `/`.
 
 Plugins are sorted by key. Consumers sort and filter for themselves.
 
 ## Publishing
 
-The **Publish index** workflow runs every three hours, on pushes to `main` that change `sources.txt`, `denylist.txt`, `cleared.txt` or `indexer/`, and on demand. It:
+The **Publish index** workflow runs every three hours, on pushes to `main` that change `sources.txt`, `denylist.txt`, `cleared.txt`, `verified.txt` or `indexer/`, and on demand. It:
 
 1. Reads the current `index.json` from the `index` branch as the previous index, so `accessChanged` compares against what was last published.
 2. Runs the crawl and validates the result against the schema. If every source failed because GitHub was rate limiting or unreachable, it stops without publishing, so a GitHub outage never blanks the index.
@@ -131,10 +141,10 @@ The published index is `https://raw.githubusercontent.com/<owner>/<repo>/index/i
 - `host.networkOrigins` is exactly `https://api.github.com` and `https://raw.githubusercontent.com`. The index is read from the `index` branch on `raw.githubusercontent.com`. Don't add any `processes` or `commands`.
 - What the plugin does:
   - It reads the published `index.json`, and falls back to a bundled copy of `fixtures/index.json`.
-  - Sort choices are Recently updated, Most stars and A–Z, plus Category and search. Each card shows the author, its stars, when it was last updated, and an Official or "Community · not reviewed" label.
+  - Sort choices are Recently updated, Most stars and A–Z, plus Category and search. Each card shows the author, its stars, when it was last updated, and an Official or "Community · not reviewed" label. A verified plugin carries a check mark on its own name, on the card and on its page, instead of a label beside its author; its audit says "Verified by Buzz".
   - The listing page shows the audit tier and flags above **Add to Buzz**, and an access summary from `host`.
   - **Add to Buzz** uses `ctx.reflect.get("pluginInstaller").requestInstall({repository, reference: ref, commit, path})`. Older hosts get the manual Git import steps.
-  - The header has **Add your plugin**. It opens a dialog that states the requirements: a built `manifest.json` and `plugin.js` committed on a public branch or tag, and an optional `buzz-listing.yaml`. The author enters `owner/repo`, `owner/repo/path` or a github.com link, plus an optional branch or tag.
+  - The header has an **Add** button, like the one in Buzz's plugin settings, for listing your own plugin. It opens a dialog that states the requirements: a built `manifest.json` and `plugin.js` committed on a public branch or tag, and an optional `buzz-listing.yaml`. The author enters `owner/repo`, `owner/repo/path` or a github.com link, plus an optional branch or tag.
   - The dialog first checks the source itself, without credentials: `GET https://api.github.com/repos/<owner>/<repo>` must return `private: false`, then `manifest.json` must parse with a valid `id` and `name`, and `plugin.js` must exist at `raw.githubusercontent.com` on that ref. It shows what it found, or why the source can't be listed. A source that passes is shown as its `sources.txt` line, with two links on github.com: **Open a pull request**, which edits `sources.txt`, and **Request in an issue**, which opens the list-plugin issue form with the line filled in. A source whose key is already listed links to its listing instead.
   - The plugin sends nothing about installs or the person using it.
 - None of the plugin's text, or this repository's, names other products or sites as a design source.

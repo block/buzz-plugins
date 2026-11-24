@@ -9,7 +9,7 @@ import { apply } from "./index";
 import { sourceOf } from "./install";
 import { createMarkdown } from "./markdown";
 import { checkSource, listingLinks, parseSourceInput, sourceLine } from "./submit";
-import { listingLink, PAGE_ID, PLUGIN_ID, slugFromTarget, starLabel, trustLabel } from "./view";
+import { listingLink, PAGE_ID, PLUGIN_ID, slugFromTarget, starLabel, trustLabel, VERIFIED_LABEL } from "./view";
 
 const demoIndex = parseIndex(demoFixture)!;
 const listings = demoIndex.plugins;
@@ -17,6 +17,7 @@ const bySlug = (slug: string) => listings.find((plugin) => plugin.slug === slug)
 const byName = (name: string) => listings.find((plugin) => plugin.name === name)!;
 const counter = byName("Counter");
 const toolbox = byName("Agent Toolbox");
+const digest = byName("PR Digest");
 const names = (plugins: readonly Listing[]) => plugins.map((plugin) => plugin.name);
 const rawListing = (overrides: Record<string, unknown> = {}) => ({ ...structuredClone(demoFixture.plugins[0]), ...overrides });
 const rawIndex = (plugins: unknown[]) => ({ ...demoFixture, plugins });
@@ -112,6 +113,7 @@ describe("index parsing", () => {
       rawListing({ source: { ...good.source, repository: "https://github.com/other/place" } }),
       rawListing({ source: { ...good.source, path: "/nested" } }),
       rawListing({ official: true }),
+      rawListing({ verified: "yes" }),
       rawListing({ author: {} }),
       rawListing({ host: undefined }),
       rawListing({ host: { ...good.host, networkOrigins: ["http://insecure.example"] } }),
@@ -284,6 +286,8 @@ describe("pure helpers", () => {
   it("labels trust and stars", () => {
     expect(trustLabel(counter)).toBe("Official");
     expect(trustLabel(toolbox)).toBe("Community · not reviewed");
+    expect(trustLabel(digest)).toBe("Verified by Buzz");
+    expect(trustLabel({ ...digest, verified: undefined })).toBe("Community · not reviewed");
     expect(starLabel(1)).toBe("1 star on GitHub");
     expect(starLabel(1234)).toBe("1,234 stars on GitHub");
   });
@@ -330,6 +334,10 @@ describe("marketplace page", () => {
     const community = screen.getByText("Agent Toolbox", { selector: ".bm-card-name" }).closest(".bm-card") as HTMLElement;
     expect(within(community).getByText("Unreviewed").getAttribute("title")).toBe("Community · not reviewed");
     expect(within(community).getByText("by relaycrew")).toBeTruthy();
+    const verified = screen.getByText("PR Digest", { selector: ".bm-card-name" }).closest(".bm-card") as HTMLElement;
+    expect(within(verified).getByRole("img", { name: VERIFIED_LABEL }).closest(".bm-card-title")).toBe(within(verified).getByText("PR Digest").parentElement);
+    expect(within(verified).queryByText(/Verified|Unreviewed/, { selector: ".bm-badge" })).toBeNull();
+    expect(within(community).queryByRole("img", { name: VERIFIED_LABEL })).toBeNull();
     expect(screen.queryByText(/Showing the index built into this version/)).toBeNull();
     expect(screen.getByText(/Index updated Nov 5, 2026\. Nothing about what you install is sent anywhere\./)).toBeTruthy();
     expect(screen.queryByRole("switch")).toBeNull();
@@ -415,6 +423,21 @@ describe("marketplace page", () => {
     expect(access.textContent).toContain("relaycrew-helper --serve");
     expect(access.textContent).toContain("Read files on this Mac");
     expect(access.textContent).toContain("Serve tools to your agents (MCP)");
+  });
+
+  it("marks a verified plugin on its own name and in its audit, and leaves others unmarked", async () => {
+    const { registered } = fakeContext(installer(vi.fn(async () => "installed")));
+    const Page = registered[0].component;
+    await act(async () => render(<Page navigation={{ target: targetFor(digest.slug) }} />));
+    await screen.findByRole("button", { name: "Add to Buzz" });
+    expect(within(screen.getByRole("heading", { level: 1 })).getByRole("img", { name: VERIFIED_LABEL })).toBeTruthy();
+    const audit = screen.getByLabelText("Audit");
+    expect(within(audit).getByText("Verified by Buzz")).toBeTruthy();
+    expect(audit.textContent).toContain("reviewed this exact version");
+    cleanup();
+    await act(async () => render(<Page navigation={{ target: targetFor(toolbox.slug) }} />));
+    await screen.findByRole("button", { name: "Add to Buzz" });
+    expect(screen.queryByRole("img", { name: VERIFIED_LABEL })).toBeNull();
   });
 
   it("shows setup steps, links, demo media and a clear audit on a reviewed listing", async () => {

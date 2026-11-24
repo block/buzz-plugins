@@ -55,6 +55,7 @@ export function checkListing(c: Checker, p: unknown, path: string): void {
 
   if (c.at(`${path}.author`, isRec(l.author), 'must be an object')) c.string(`${path}.author.github`, (l.author as Rec).github, 100, 1);
   c.at(`${path}.official`, typeof l.official === 'boolean', 'must be a boolean');
+  c.at(`${path}.verified`, typeof l.verified === 'boolean', 'must be a boolean');
 
   if (c.at(`${path}.source`, isRec(l.source), 'must be an object')) {
     const s = l.source as Rec;

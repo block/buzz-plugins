@@ -70,7 +70,8 @@ export function parseKeyList(text: string): string[] {
     .filter(Boolean);
 }
 
-export function parseCleared(text: string): Set<string> {
+/** Reads a `<key> <commit>` list: `cleared.txt` or `verified.txt`. */
+export function parsePins(text: string): Set<string> {
   const set = new Set<string>();
   for (const line of parseKeyList(text)) {
     const [key, commit] = line.split(/\s+/);
@@ -79,6 +80,6 @@ export function parseCleared(text: string): Set<string> {
   return set;
 }
 
-export function isCleared(cleared: Set<string>, key: string, commit: string): boolean {
-  return cleared.has(`${key.toLowerCase()} ${commit.toLowerCase()}`);
+export function isPinned(pins: Set<string>, key: string, commit: string): boolean {
+  return pins.has(`${key.toLowerCase()} ${commit.toLowerCase()}`);
 }

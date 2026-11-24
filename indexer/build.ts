@@ -6,13 +6,15 @@ import type { Deps } from './net.ts';
 import { checkPublic, fail, getFailure, rawUrl } from './publicity.ts';
 import type { Failure } from './publicity.ts';
 import { listingKey, slugify } from './slug.ts';
+import { isPinned } from './sources.ts';
 import { isoSeconds } from './time.ts';
-import type { Listing, Source } from './types.ts';
+import type { Listing, Media, Source } from './types.ts';
 
 export interface BuildContext {
   now: () => number;
   previous: Map<string, Listing>;
   cleared: Set<string>;
+  verified: Set<string>;
 }
 
 const TEXT_LIMIT = 256 * 1024;
@@ -50,6 +52,22 @@ async function fetchCommitDate(deps: Deps, source: Source, commit: string): Prom
   }
 }
 
+/** A review covers one commit, so a verified listing keeps only what that commit pins:
+ * media served from it, and the repository link. Anything else can change afterwards. */
+export function pinnedOnly<T extends Pick<Listing, 'demo' | 'links'>>(meta: T, source: Source, commit: string): T {
+  const prefix = `https://raw.githubusercontent.com/${source.owner}/${source.repo}/${commit}/`;
+  const pinned = <M extends Media>(media: M | null) => (media?.url.startsWith(prefix) ? media : null);
+  return {
+    ...meta,
+    demo: {
+      video: pinned(meta.demo.video),
+      poster: pinned(meta.demo.poster),
+      screenshots: meta.demo.screenshots.filter((shot) => pinned(shot)),
+    },
+    links: { repository: meta.links.repository },
+  };
+}
+
 export async function buildListing(
   deps: Deps,
   input: { owner: string; repo: string; ref?: string; path?: string },
@@ -83,19 +101,23 @@ export async function buildListing(
 
   const key = listingKey(source);
   const repository = `https://github.com/${source.owner}/${source.repo}`;
+  const verified = isPinned(ctx.verified, key, commit);
+  const meta = verified ? pinnedOnly(resolved.meta, source, commit) : resolved.meta;
   const listing: Listing = {
     key,
     slug: slugify(key),
     id: manifest.id,
     name: manifest.name,
-    tagline: resolved.meta.tagline,
-    description: resolved.meta.description,
-    category: resolved.meta.category,
-    tags: resolved.meta.tags,
+    tagline: meta.tagline,
+    description: meta.description,
+    category: meta.category,
+    tags: meta.tags,
     author: { github: source.owner },
     official: source.owner.toLowerCase() === 'block',
+    verified,
     source: { repository, ref: source.ref, commit, path: source.path },
     host: manifest.host,
+    // Verified or not, the tier, the flags and whether they were cleared stay as the audit found them.
     audit: audit({
       key,
       commit,
@@ -105,9 +127,9 @@ export async function buildListing(
       cleared: ctx.cleared,
       checkedAt: isoSeconds(ctx.now()),
     }),
-    demo: resolved.meta.demo,
-    setup: resolved.meta.setup,
-    links: resolved.meta.links,
+    demo: meta.demo,
+    setup: meta.setup,
+    links: meta.links,
     stars: checked.repo.stars,
     updatedAt: date.date,
   };

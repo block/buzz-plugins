@@ -66,6 +66,7 @@ export interface Listing {
   tags: string[];
   author: { github: string };
   official: boolean;
+  verified: boolean;
   source: { repository: string; ref: string; commit: string; path: string };
   host: Host;
   audit: Audit;

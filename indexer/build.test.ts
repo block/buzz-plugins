@@ -7,13 +7,15 @@ import { addSource } from './add.ts';
 import { buildListing } from './build.ts';
 import { crawl, isTransientOutage } from './crawl.ts';
 import { validateIndex } from './schema.ts';
+import { parsePins } from './sources.ts';
 import { COMMIT, NOW, mock, repoRoutes } from './testkit.ts';
 import type { Listing } from './types.ts';
 
-const ctx = (previous: Listing[] = [], cleared = '') => ({
+const ctx = (previous: Listing[] = [], cleared = '', verified = '') => ({
   now: () => NOW,
   previous: new Map(previous.map((p) => [p.key, p])),
-  cleared: new Set(cleared ? [cleared] : []),
+  cleared: parsePins(cleared),
+  verified: parsePins(verified),
 });
 
 test('buildListing assembles the spec shape for a root plugin', async () => {
@@ -36,6 +38,7 @@ test('buildListing assembles the spec shape for a root plugin', async () => {
   assert.equal(l.category, 'agents');
   assert.deepEqual(l.author, { github: 'octo' });
   assert.equal(l.official, false);
+  assert.equal(l.verified, false);
   assert.deepEqual(l.source, { repository: 'https://github.com/octo/plug', ref: 'main', commit: COMMIT, path: '' });
   assert.deepEqual(l.host.networkOrigins, ['https://api.github.com']);
   assert.equal(l.audit.tier, 'medium');
@@ -76,6 +79,63 @@ test('a high-tier plugin is cleared when cleared.txt names its commit', async ()
   const r = await buildListing(mock(repoRoutes({ manifest })).deps, { owner: 'octo', repo: 'plug', ref: 'main' }, ctx([], `github.com/octo/plug ${COMMIT}`));
   assert.ok(r.ok);
   assert.equal(r.listing.audit.cleared, true);
+});
+
+test('a listing is verified only at the commit verified.txt names, whatever the case of its key', async () => {
+  const build = (verified: string) =>
+    buildListing(mock(repoRoutes()).deps, { owner: 'octo', repo: 'plug', ref: 'main' }, ctx([], '', verified));
+  const reviewed = await build(`github.com/Octo/PLUG ${COMMIT.toUpperCase()}`);
+  assert.ok(reviewed.ok);
+  assert.equal(reviewed.listing.verified, true);
+  const moved = await build(`github.com/octo/plug ${'e'.repeat(40)}`);
+  assert.ok(moved.ok);
+  assert.equal(moved.listing.verified, false);
+  const notHex = await build('github.com/octo/plug main');
+  assert.ok(notHex.ok);
+  assert.equal(notHex.listing.verified, false);
+});
+
+test('verifying a listing leaves its audit as found: the tier, the flags and whether they were cleared', async () => {
+  const fixture = { manifest: { id: 'octo.plug', host: { mcp: true } }, pluginJs: 'eval("1")' };
+  const pin = `github.com/octo/plug ${COMMIT}`;
+  const build = (cleared: string) =>
+    buildListing(mock(repoRoutes(fixture)).deps, { owner: 'octo', repo: 'plug', ref: 'main' }, ctx([], cleared, pin));
+  const verified = await build('');
+  assert.ok(verified.ok);
+  assert.equal(verified.listing.verified, true);
+  assert.equal(verified.listing.audit.tier, 'high');
+  assert.deepEqual(verified.listing.audit.flags.map((flag) => flag.code), ['dynamic-code']);
+  assert.equal(verified.listing.audit.cleared, false);
+  const both = await build(pin);
+  assert.ok(both.ok);
+  assert.equal(both.listing.audit.cleared, true);
+  assert.equal(both.listing.audit.tier, 'high');
+});
+
+test('a verified listing keeps only media at its commit and the repository link', async () => {
+  const listingYaml = [
+    'demo:',
+    '  video: https://cdn.example.com/demo.mp4',
+    '  poster: demo/poster.png',
+    '  screenshots:',
+    '    - { src: demo/1.png, caption: Pinned }',
+    '    - { src: "https://cdn.example.com/2.png" }',
+    'links: { docs: "https://docs.example.com", support: "https://help.example.com" }',
+  ].join('\n');
+  const build = (verified: string) =>
+    buildListing(mock(repoRoutes({ listingYaml })).deps, { owner: 'octo', repo: 'plug', ref: 'main' }, ctx([], '', verified));
+  const open = await build('');
+  assert.ok(open.ok);
+  assert.equal(open.listing.demo.video?.url, 'https://cdn.example.com/demo.mp4');
+  assert.equal(open.listing.demo.screenshots.length, 2);
+  assert.equal(open.listing.links.docs, 'https://docs.example.com/');
+  const reviewed = await build(`github.com/octo/plug ${COMMIT}`);
+  assert.ok(reviewed.ok);
+  const raw = `https://raw.githubusercontent.com/octo/plug/${COMMIT}`;
+  assert.equal(reviewed.listing.demo.video, null);
+  assert.equal(reviewed.listing.demo.poster?.url, `${raw}/demo/poster.png`);
+  assert.deepEqual(reviewed.listing.demo.screenshots.map((shot) => shot.url), [`${raw}/demo/1.png`]);
+  assert.deepEqual(reviewed.listing.links, { repository: 'https://github.com/octo/plug' });
 });
 
 test('accessChanged is computed against the previous index pin', async () => {
@@ -189,6 +249,11 @@ test('crawl uses the previous index for accessChanged and cleared.txt for cleari
   });
   assert.equal(second.index.plugins[0]!.audit.cleared, true);
   assert.equal(second.index.plugins[0]!.audit.accessChanged, true);
+  assert.equal(second.index.plugins[0]!.verified, false);
+  const third = await crawl({ sourcesText: src, verifiedText: `github.com/Octo/Plug ${COMMIT}\n`, deps: m().deps, now: () => NOW });
+  assert.equal(third.index.plugins[0]!.verified, true);
+  assert.equal(third.report.results[0]!.verified, true);
+  assert.deepEqual(validateIndex(third.index), []);
 });
 
 test('add appends a passing source and refuses duplicates, private repos and denylisted keys', async () => {

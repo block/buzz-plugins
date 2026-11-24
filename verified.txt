@@ -1,0 +1,1 @@
+# <key> <commit>: versions a Buzz maintainer has reviewed. See VERIFICATION.md.
