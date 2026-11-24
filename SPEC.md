@@ -42,6 +42,10 @@ If any step fails, the source isn't listed and the reason is recorded in the cra
 
 The **Check sources** workflow runs it on pull requests that touch `sources.txt` and on issues labelled `list-plugin`, and comments with the table. It uses `pull_request_target` so it can comment on pull requests from forks, and it only ever runs the code on the default branch: the pull request's `sources.txt` and the issue body are read as data.
 
+### Local check
+
+`indexer/check-plugin.ts <folder>` checks a plugin folder on disk before it is pushed, with no network access. It applies the crawl's manifest, `plugin.js` size and `buzz-listing.yaml` rules and the audit's tier and flags, and it also requires `"apiVersion": 1`. It fails when a built file differs from the last commit or is gitignored, or when the branch has commits its upstream lacks. Each finding is `ok`, `note`, `review` (listed, but a maintainer has to clear it) or `fail`; it exits non-zero only on `fail`. It cannot tell whether the repository is public, which the source check does.
+
 ## Author metadata (optional)
 
 An author can add `buzz-listing.yaml` next to `manifest.json`. Unknown fields are errors.
