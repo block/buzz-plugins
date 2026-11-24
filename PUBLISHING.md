@@ -2,15 +2,14 @@
 
 This is the checklist for getting a plugin you already run in Buzz listed for everyone. It is written so a person or their agent can follow it top to bottom. Stop at the first step that fails and fix it before going on.
 
-Sharing with your own community does not need any of this. The Community Marketplace lists every built plugin in a git repository on your community's relay, to the people who can read that repository.
-
 ## What a listing needs
 
 | Requirement | How it is checked |
 | --- | --- |
-| `manifest.json` with a valid `id`, a `name` and `"apiVersion": 1` | Local check and the pull request check |
+| `manifest.json` with a valid `id` | Local check and the pull request check |
+| `"apiVersion": 1` in `manifest.json`, which Buzz requires to load it | Local check |
 | A built `plugin.js` next to `manifest.json` | Local check and the pull request check |
-| Both files committed, at the repository root or in a folder | Local check |
+| Both files committed and pushed, at the repository root or in a folder, and not gitignored | Local check |
 | A public GitHub repository, on a branch or tag | Pull request check, without credentials |
 | A `buzz-listing.yaml`, if present, with no unknown fields | Local check and the pull request check |
 | A description: `description` in the manifest, a README or `buzz-listing.yaml` | Local check, as a note |
@@ -30,7 +29,7 @@ A plugin that asks for processes, commands, files, MCP or agent hooks, or that t
 
    Each line starts with `ok`, `note`, `review` or `FAIL`. The command exits non-zero when anything fails. `review` lines do not block listing; they are what a maintainer will look at. Fix every `FAIL`, then run it again.
 
-3. **Commit and push** `manifest.json`, `plugin.js` and, if you have one, `buzz-listing.yaml` to a public GitHub repository. Run the check once more after committing: it fails while built files differ from the last commit.
+3. **Commit and push** `manifest.json`, `plugin.js` and, if you have one, `buzz-listing.yaml` to a public GitHub repository. Run the check once more after pushing: it fails while a built file differs from the last commit or is gitignored, and while the branch has commits its upstream lacks.
 
 4. **Do not publish secrets.** Read `plugin.js` and the repository for tokens, internal hostnames and private data before making it public. Nothing checks this for you.
 

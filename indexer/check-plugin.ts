@@ -17,8 +17,10 @@ export interface PluginFiles {
   plugin?: { text: string; bytes: number };
   listing?: string;
   readme: boolean;
-  /** Built files that differ from the last commit, or `undefined` outside a git repository. */
+  /** Built files that differ from the last commit or that git ignores, or `undefined` outside a git repository. */
   uncommitted?: string[];
+  /** Commits the upstream branch lacks, or `undefined` when there is no upstream to compare with. */
+  unpushed?: number;
 }
 
 /** Checks a plugin folder against what the crawl requires and the audit reports. */
@@ -31,6 +33,8 @@ export function checkPlugin(files: PluginFiles): Finding[] {
   const parsed = parseManifest(files.manifest);
   if ('error' in parsed) return [{ level: 'fail', detail: parsed.error }];
   const { manifest } = parsed;
+  // Buzz refuses any other value, though the crawl doesn't read it.
+  if ((JSON.parse(files.manifest) as { apiVersion?: unknown }).apiVersion !== 1) add('fail', 'manifest.json needs "apiVersion": 1');
   add('ok', `manifest.json: ${manifest.id} "${manifest.name}"`);
   if (!manifest.description) add('note', 'manifest.json has no description; the listing would have no tagline unless buzz-listing.yaml sets one');
 
@@ -53,25 +57,32 @@ export function checkPlugin(files: PluginFiles): Finding[] {
 
   if (files.uncommitted === undefined) add('note', 'not in a git repository; the directory lists a commit, so commit and push the built files');
   else if (files.uncommitted.length > 0) add('fail', `not committed: ${files.uncommitted.join(', ')}; the directory lists what is pushed, not what is on disk`);
-  else add('ok', 'built files are committed');
+  else if (files.unpushed === undefined) add('note', 'built files are committed, but this branch has no upstream to compare with; push it');
+  else if (files.unpushed > 0) add('fail', `${files.unpushed} commit${files.unpushed === 1 ? ' is' : 's are'} not pushed; the directory lists what is pushed`);
+  else add('ok', 'built files are committed and pushed');
   return findings;
 }
 
 const BUILT = ['manifest.json', 'plugin.js', 'buzz-listing.yaml'];
 
-function uncommitted(folder: string): string[] | undefined {
+function gitState(folder: string): Pick<PluginFiles, 'uncommitted' | 'unpushed'> {
   const git = (...args: string[]) => execFileSync('git', ['-C', folder, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
   try {
     git('rev-parse', '--is-inside-work-tree');
   } catch {
-    return undefined;
+    return {};
   }
   const present = BUILT.filter((name) => existsSync(join(folder, name)));
-  // Untracked and modified both show here; a repository without commits lists everything.
-  return git('status', '--porcelain', '--', ...present)
+  // Untracked, modified and, with --ignored, gitignored files all show here; a repository without commits lists everything.
+  const uncommitted = git('status', '--porcelain', '--ignored', '--', ...present)
     .split('\n')
     .filter(Boolean)
     .map((line) => line.slice(3));
+  try {
+    return { uncommitted, unpushed: Number(git('rev-list', '--count', '@{upstream}..HEAD')) };
+  } catch {
+    return { uncommitted };
+  }
 }
 
 export function readPluginFolder(folder: string): PluginFiles {
@@ -82,7 +93,7 @@ export function readPluginFolder(folder: string): PluginFiles {
     plugin: existsSync(plugin) ? { text: readFileSync(plugin, 'utf8'), bytes: statSync(plugin).size } : undefined,
     listing: read('buzz-listing.yaml'),
     readme: ['README.md', 'README', 'readme.md'].some((name) => existsSync(join(folder, name))),
-    uncommitted: uncommitted(folder),
+    ...gitState(folder),
   };
 }
 

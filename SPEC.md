@@ -44,7 +44,7 @@ The **Check sources** workflow runs it on pull requests that touch `sources.txt`
 
 ### Local check
 
-`indexer/check-plugin.ts <folder>` checks a plugin folder on disk before it is pushed, with no network access. It applies the crawl's manifest, `plugin.js` size and `buzz-listing.yaml` rules and the audit's tier and flags, and it fails when a built file differs from the last commit. Each finding is `ok`, `note`, `review` (listed, but a maintainer has to clear it) or `fail`; it exits non-zero only on `fail`. It cannot tell whether the repository is public, which the source check does.
+`indexer/check-plugin.ts <folder>` checks a plugin folder on disk before it is pushed, with no network access. It applies the crawl's manifest, `plugin.js` size and `buzz-listing.yaml` rules and the audit's tier and flags, and it also requires `"apiVersion": 1`. It fails when a built file differs from the last commit or is gitignored, or when the branch has commits its upstream lacks. Each finding is `ok`, `note`, `review` (listed, but a maintainer has to clear it) or `fail`; it exits non-zero only on `fail`. It cannot tell whether the repository is public, which the source check does.
 
 ## Author metadata (optional)
 
