@@ -20,6 +20,16 @@ https://raw.githubusercontent.com/block/buzz-plugins/index/index.json
 | [`SPEC.md`](./SPEC.md) | The contract: listing keys, publicity check, audit, `index.json`, publishing |
 | [`VERIFICATION.md`](./VERIFICATION.md) | How a listing becomes Verified by Buzz, and how that is withdrawn |
 
+## Installing the Community Marketplace
+
+CI builds the [`marketplace/`](./marketplace) plugin on every change to `main` and publishes its `manifest.json` and `plugin.js` to the [`marketplace`](../../tree/marketplace) branch. To install it, open this link in Buzz:
+
+```
+buzz://plugin-install/?repository=https%3A%2F%2Fgithub.com%2Fblock%2Fbuzz-plugins&ref=marketplace
+```
+
+Or go to Settings → Plugins → Add, choose a Git repository, and enter `https://github.com/block/buzz-plugins` with the branch `marketplace`.
+
 ## Listing a plugin
 
 [`PUBLISHING.md`](./PUBLISHING.md) is the full checklist, written for a person or their agent to follow. `pnpm run check-plugin <folder>` checks a plugin folder before you push it. In short:
