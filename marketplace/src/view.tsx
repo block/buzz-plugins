@@ -1,6 +1,7 @@
 import type { Context } from "@buzz/author";
 import {
   accessSummary,
+  authorKey,
   authorName,
   categories,
   type Index,
@@ -14,7 +15,7 @@ import {
   tierLabels,
 } from "./catalog";
 import { activePluginIds, type InstallationStatus, type InstallResult, type PluginsCapability, sourceOf } from "./install";
-import { connection, loadCommunity, relayOf, SHARE_PROMPT } from "./community";
+import { connection, loadCommunity, relayOf, SHARE_PROMPT, shortKey } from "./community";
 import { createMarkdown } from "./markdown";
 import { type CheckedSource, checkSource, describeSource, listingLinks, parseSourceInput, sourceKey, sourceLine } from "./submit";
 
@@ -624,7 +625,17 @@ export function createViews(ctx: Context, capability: PluginsCapability | undefi
             ) : null}
           </div>
           <div className="bm-card-row bm-card-meta">
-            <span className="bm-card-author">by {authorName(listing)}</span>
+            <span className="bm-card-author">
+              by {authorName(listing)}
+              {authorKey(listing) ? (
+                <>
+                  {" "}
+                  <code className="bm-key" title={authorKey(listing)!}>
+                    {shortKey(authorKey(listing)!)}
+                  </code>
+                </>
+              ) : null}
+            </span>
             <TrustBadge listing={listing} compact />
           </div>
           <div className="bm-card-row bm-card-meta bm-card-footer">
@@ -843,6 +854,14 @@ export function createViews(ctx: Context, capability: PluginsCapability | undefi
               <dl className="bm-kv">
                 <dt>Author</dt>
                 <dd>{authorName(listing)}</dd>
+                {authorKey(listing) ? (
+                  <>
+                    <dt>Key</dt>
+                    <dd>
+                      <code className="bm-key">{authorKey(listing)}</code>
+                    </dd>
+                  </>
+                ) : null}
                 <dt>Category</dt>
                 <dd>{categories[listing.category] ?? listing.category}</dd>
                 {listing.stars ? (
@@ -907,7 +926,7 @@ export function createViews(ctx: Context, capability: PluginsCapability | undefi
       return () => controller.abort();
     }, [connected]);
     const slug = slugFromTarget(navigation?.target);
-    const listing = slug ? [...community, ...(state?.index.plugins ?? [])].find((plugin) => plugin.slug === slug) : undefined;
+    const listing = slug ? [...(state?.index.plugins ?? []), ...community].find((plugin) => plugin.slug === slug) : undefined;
     return (
       <div className="bm-page">
         <div className="bm-inner">

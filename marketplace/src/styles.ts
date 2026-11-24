@@ -19,6 +19,7 @@ export const styles = `
   background: var(--surface-panel); color: var(--text-subtle); font: inherit; font-size: var(--text-body-sm); cursor: pointer; }
 .bm-chip:hover { background: var(--affordance-row-hover); color: var(--text-standard); }
 .bm-chip[aria-pressed="true"] { background: var(--surface-inverse); border-color: var(--surface-inverse); color: var(--text-inverse); }
+.bm-key { font-family: var(--font-mono); font-size: .92em; overflow-wrap: anywhere; }
 .bm-section-title { margin: var(--space-8) 0 var(--space-3); font-size: var(--text-body); font-weight: var(--font-weight-semibold); color: var(--text-subtle); }
 .bm-media { position: relative; aspect-ratio: 16 / 10; border-radius: var(--radius-panel); overflow: hidden; background: var(--surface-inset);
   border: 1px solid var(--border-image, var(--border-standard)); }

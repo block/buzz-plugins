@@ -3,7 +3,7 @@ import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import demoFixture from "../demo/index.demo.json";
 import { INDEX_URL } from "./catalog";
-import { communityListing, loadCommunity, pluginFolders, SHARE_PROMPT } from "./community";
+import { communityListing, gitOrigin, loadCommunity, npub, pluginFolders, SHARE_PROMPT, shortKey } from "./community";
 import { apply } from "./index";
 
 const OWNER = "a".repeat(64);
@@ -13,8 +13,8 @@ const ORIGIN = "https://relay.example";
 const manifest = (overrides: Record<string, unknown> = {}) =>
   JSON.stringify({ id: "example.shelf", name: "Shelf", apiVersion: 1, description: "Shared from a shelf.", ...overrides });
 
-type Repo = { owner?: string; dtag: string; head?: string; files: Record<string, string>; readme?: string; fails?: boolean; at?: number };
-function relayWith(repos: Repo[], options: { status?: string; git?: boolean; names?: Record<string, string> } = {}) {
+type Repo = { owner?: string; dtag: string; head?: string; files: Record<string, string>; readme?: string; fails?: boolean | string; at?: number };
+function relayWith(repos: Repo[], options: { status?: string; git?: boolean; names?: Record<string, string>; origin?: string } = {}) {
   const events = repos.flatMap((repo, index) => {
     const base = { pubkey: repo.owner ?? OWNER, created_at: repo.at ?? 1_800_000_000 + index };
     return [
@@ -22,22 +22,26 @@ function relayWith(repos: Repo[], options: { status?: string; git?: boolean; nam
       ...(repo.head ? [{ ...base, kind: 30618, tags: [["d", repo.dtag], ["HEAD", `ref: refs/heads/${repo.head}`]] }] : []),
     ];
   });
+  const running = { now: 0, most: 0 };
   const read = vi.fn(async (input: { owner: string; dtag: string; path?: string }) => {
+    running.most = Math.max(running.most, ++running.now);
+    await new Promise((resolve) => setTimeout(resolve, 1));
+    running.now--;
     const repo = repos.find((entry) => (entry.owner ?? OWNER) === input.owner && entry.dtag === input.dtag);
-    if (!repo || repo.fails) throw new Error("denied");
+    if (!repo || repo.fails === true || (repo.fails && repo.fails === input.path)) throw new Error("denied");
     return {
       head: COMMIT,
-      files: Object.keys(repo.files).map((path) => ({ path })),
+      files: Object.entries(repo.files).map(([path, text]) => ({ path, size: text.length })),
       readme: repo.readme ?? null,
       file: input.path ? { content: repo.files[input.path] ?? null } : null,
     };
   });
   const session = {
-    read: vi.fn(async () => events),
+    read: vi.fn(async ([filter]: readonly { kinds: number[] }[]) => events.filter((event) => filter.kinds.includes(event.kind))),
     ...(options.git === false ? {} : { projectGit: { read } }),
     profiles: { snapshot: () => new Map(Object.entries(options.names ?? {}).map(([pubkey, name]) => [pubkey, { name }])) },
   };
-  return { read, relay: { snapshot: () => ({ status: options.status ?? "ready", origin: ORIGIN, viewer: VIEWER, session }) } };
+  return { read, running, relay: { snapshot: () => ({ status: options.status ?? "ready", origin: options.origin ?? ORIGIN, viewer: VIEWER, session }) } };
 }
 const contextWith = (relay: unknown) => ({ reflect: { get: (name: string) => (name === "relay" ? relay : undefined) } }) as never;
 const load = (relay: unknown) => loadCommunity(contextWith(relay), new AbortController().signal);
@@ -66,7 +70,7 @@ describe("communityListing", () => {
     const listing = communityListing({ ...input, folder: "tools/notes", manifest: manifest() })!;
     expect(listing.source).toEqual({ repository: `${ORIGIN}/git/${OWNER}/Shelf.Repo`, ref: "main", commit: COMMIT, path: "tools/notes" });
     expect(listing.slug).toMatch(/^[a-z0-9-]{1,120}$/);
-    expect(listing.author).toEqual({ member: "Ada" });
+    expect(listing.author).toEqual({ member: "Ada", npub: npub(OWNER) });
     expect(listing.official).toBe(false);
     expect(listing.verified).toBeUndefined();
   });
@@ -79,9 +83,48 @@ describe("communityListing", () => {
     expect(communityListing({ ...input, manifest: manifest({ host: { commands: [{ program: "git", args: ["status"] }] } }) })!.host.commands).toEqual(["git status"]);
   });
 
+  it("refuses an origin it can't show as written, so less access is never implied", () => {
+    for (const networkOrigins of [["http://api.example.com"], ["https://*.example.com"], ["https://ok.example.com", "https://example.com/path"], [7], "https://example.com"])
+      expect(communityListing({ ...input, manifest: manifest({ host: { networkOrigins } }) })).toBeNull();
+  });
+
+  it("refuses names that don't belong in an install address", () => {
+    const ok = { ...input, manifest: manifest() };
+    expect(communityListing(ok)).not.toBeNull();
+    for (const dtag of ["a/b", "a b", "../x", "x?y=1", "x#y", "", "x".repeat(65)]) expect(communityListing({ ...ok, dtag })).toBeNull();
+    for (const origin of ["http://relay.example", "ws://relay.example", "https://relay.example/x", "https://user@relay.example"])
+      expect(communityListing({ ...ok, origin })).toBeNull();
+    for (const folder of ["../up", "a//b", "a/./b", "a b"]) expect(communityListing({ ...ok, folder })).toBeNull();
+    for (const branch of ["a..b", "/main", "main/", "ma in", "x".repeat(101)]) expect(communityListing({ ...ok, branch })).toBeNull();
+    expect(communityListing({ ...ok, owner: "A".repeat(64) })).toBeNull();
+    expect(communityListing({ ...ok, commit: "main" })).toBeNull();
+    expect(communityListing({ ...ok, manifest: manifest({ pad: "x".repeat(256 * 1024) }) })).toBeNull();
+  });
+
+  it("keeps shelf slugs apart from public ones", () => {
+    const slug = communityListing({ ...input, dtag: "github-com--block--buzz-app", manifest: manifest() })!.slug;
+    expect(slug.startsWith("shared-")).toBe(true);
+    expect(demoFixture.plugins.some((plugin) => plugin.slug === slug || plugin.slug.startsWith("shared-"))).toBe(false);
+  });
+
   it("rejects a manifest that isn't JSON or has no valid id", () => {
     expect(communityListing({ ...input, manifest: "{" })).toBeNull();
     expect(communityListing({ ...input, manifest: manifest({ id: "Bad_Id" }) })).toBeNull();
+  });
+});
+
+describe("keys and origins", () => {
+  it("encodes a member's key as an npub", () => {
+    const key = npub("3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d");
+    expect(key).toBe("npub180cvv07tjdrrgpa0j7j7tmnyl2yr6yr7l8j4s3evf6u64th6gkwsyjh6w6");
+    expect(shortKey(key)).toBe("npub180cvv…h6w6");
+  });
+
+  it("serves repositories only from a community on TLS", () => {
+    expect(gitOrigin("https://relay.example")).toBe("https://relay.example");
+    expect(gitOrigin("wss://relay.example:8443")).toBe("https://relay.example:8443");
+    for (const origin of ["ws://relay.example", "http://relay.example", "https://relay.example/x", "https://a:b@relay.example", "nope"])
+      expect(gitOrigin(origin)).toBeNull();
   });
 });
 
@@ -98,10 +141,70 @@ describe("loadCommunity", () => {
     );
     const listings = await load(relay);
     expect(listings.map((listing) => [listing.name, listing.author, listing.source.ref])).toEqual([
-      ["Mine", { member: "you" }, "main"],
-      ["Shelf", { member: "Ada" }, "trunk"],
+      ["Mine", { member: "you", npub: npub(VIEWER) }, "main"],
+      ["Shelf", { member: "Ada", npub: npub(OWNER) }, "trunk"],
     ]);
     expect(listings[1].description).toBe("# Shelf");
+  });
+
+  it("keeps what it read from a repository when a later read fails", async () => {
+    const built = (id: string) => ({ [`${id}/manifest.json`]: manifest({ id: `example.${id}`, name: id }), [`${id}/plugin.js`]: "" });
+    const { relay } = relayWith([{ dtag: "shelf", files: { ...built("a"), ...built("b") }, fails: "b/manifest.json" }]);
+    expect((await load(relay)).map((listing) => listing.name)).toEqual(["a"]);
+  });
+
+  it("uses the newest announcement and state of a repository", async () => {
+    const files = { "manifest.json": manifest(), "plugin.js": "" };
+    const { relay } = relayWith([
+      { dtag: "shelf", head: "old", files, at: 1_800_000_000 },
+      { dtag: "shelf", head: "new", files, at: 1_800_000_500 },
+    ]);
+    const listings = await load(relay);
+    expect(listings).toHaveLength(1);
+    expect(listings[0].source.ref).toBe("new");
+    expect(listings[0].updatedAt).toBe(new Date(1_800_000_500_000).toISOString());
+  });
+
+  it("skips repositories whose name or branch can't go in an install address", async () => {
+    const files = { "manifest.json": manifest(), "plugin.js": "" };
+    const { relay, read } = relayWith([
+      { dtag: "bad/name", files },
+      { dtag: "bad name", files },
+      { dtag: "odd-branch", head: "a..b", files },
+      { dtag: "fine", files },
+    ]);
+    expect((await load(relay)).map((listing) => listing.source.repository)).toEqual([`${ORIGIN}/git/${OWNER}/fine`]);
+    expect(read.mock.calls.some(([input]) => input.dtag.startsWith("bad"))).toBe(false);
+  });
+
+  it("lists nothing from a community that isn't on TLS", async () => {
+    const repos = [{ dtag: "shelf", files: { "manifest.json": manifest(), "plugin.js": "" } }];
+    const { relay, read } = relayWith(repos, { origin: "ws://relay.example" });
+    expect(await load(relay)).toEqual([]);
+    expect(read).not.toHaveBeenCalled();
+    expect((await load(relayWith(repos, { origin: "wss://relay.example" }).relay))[0].source.repository).toBe(`${ORIGIN}/git/${OWNER}/shelf`);
+  });
+
+  it("caps repositories per member and in all, reads four at a time, and puts yours first", async () => {
+    const files = { "manifest.json": manifest(), "plugin.js": "" };
+    const flood = Array.from({ length: 30 }, (_, index) => ({ dtag: `spam-${index}`, files, at: 1_900_000_000 + index }));
+    const others = Array.from({ length: 50 }, (_, index) => ({ owner: index.toString(16).padStart(4, "0").padEnd(64, "0"), dtag: "shelf", files, at: 1_800_000_000 + index }));
+    const mine = { owner: VIEWER, dtag: "mine", files, at: 1_700_000_000 };
+    const { relay, running } = relayWith([...flood, ...others, mine]);
+    const listings = await load(relay);
+    expect(listings).toHaveLength(40);
+    expect(listings[0].author).toEqual({ member: "you", npub: npub(VIEWER) });
+    expect(listings.filter((listing) => listing.source.repository.includes(OWNER))).toHaveLength(5);
+    expect(running.most).toBe(4);
+  });
+
+  it("skips a manifest over the size cap without reading it, and more than eight plugins in one repository", async () => {
+    const built = (id: string, text = manifest({ id: `example.${id}` })) => ({ [`${id}/manifest.json`]: text, [`${id}/plugin.js`]: "" });
+    const big = relayWith([{ dtag: "shelf", files: { ...built("big", manifest({ pad: "x".repeat(256 * 1024) })), ...built("ok") } }]);
+    expect((await load(big.relay)).map((listing) => listing.id)).toEqual(["example.ok"]);
+    expect(big.read.mock.calls.some(([input]) => input.path === "big/manifest.json")).toBe(false);
+    const many = Object.assign({}, ...Array.from({ length: 12 }, (_, index) => built(`p${String(index).padStart(2, "0")}`)));
+    expect(await load(relayWith([{ dtag: "shelf", files: many }]).relay)).toHaveLength(8);
   });
 
   it("is empty when the community isn't ready or this Buzz can't read repositories", async () => {
@@ -140,7 +243,8 @@ describe("From this community", () => {
     const heading = await screen.findByRole("heading", { name: "From this community" });
     const card = screen.getByText("Shelf", { selector: ".bm-card-name" }).closest(".bm-card") as HTMLElement;
     expect(heading.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(within(card).getByText("by Ada")).toBeTruthy();
+    expect(within(card).getByText(/by Ada/)).toBeTruthy();
+    expect(within(card).getByTitle(npub(OWNER)).textContent).toBe(shortKey(npub(OWNER)));
     expect(within(card).getByText("Shared here").getAttribute("title")).toBe("Shared here · not reviewed");
     await act(async () => fireEvent.click(within(card).getByRole("button", { name: "Add to Buzz" })));
     expect(requestInstall).toHaveBeenCalledWith({ repository: `${ORIGIN}/git/${OWNER}/shelf`, reference: "main", commit: COMMIT });
@@ -163,6 +267,16 @@ describe("From this community", () => {
     expect(within(audit).getByText(/Not scanned/)).toBeTruthy();
     expect(within(audit).queryByText(/hasn't cleared/)).toBeNull();
     expect(screen.getByText("About the shelf.")).toBeTruthy();
+    expect(screen.getByText(npub(OWNER))).toBeTruthy();
+  });
+
+  it("opens the public listing when a shelf listing claims its slug", async () => {
+    const publicListing = demoFixture.plugins[0];
+    const { relay } = shelf();
+    const { Page } = page(relay);
+    await act(async () => render(<Page navigation={{ target: { route: { params: { slug: publicListing.slug } } } }} />));
+    expect(await screen.findByRole("heading", { name: publicListing.name, level: 1 })).toBeTruthy();
+    expect(within(screen.getByLabelText("Audit")).queryByText("Shared here · not reviewed")).toBeNull();
   });
 });
 

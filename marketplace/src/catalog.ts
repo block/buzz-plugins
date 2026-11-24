@@ -15,7 +15,7 @@ export type Listing = Readonly<{
   category: string;
   tags?: readonly string[];
   /** A GitHub owner for a public listing, or the member who shares it in this community. */
-  author: Readonly<{ github: string } | { member: string }>;
+  author: Readonly<{ github: string } | { member: string; npub: string }>;
   official: boolean;
   /** Absent in an index published before the verified tier. */
   verified?: boolean;
@@ -152,6 +152,7 @@ export async function loadIndex(host: Context["host"] | undefined): Promise<{ in
 }
 
 export const shared = (listing: Listing) => "member" in listing.author;
+export const authorKey = (listing: Listing) => ("npub" in listing.author ? listing.author.npub : null);
 export const authorName = (listing: Listing) => ("member" in listing.author ? listing.author.member : listing.author.github);
 
 const updated = (listing: Listing) => Date.parse(listing.updatedAt ?? "") || 0;
