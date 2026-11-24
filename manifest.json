@@ -1,0 +1,19 @@
+{
+  "id": "xyz.block.community-marketplace",
+  "name": "Community Marketplace",
+  "apiVersion": 1,
+  "description": "Browse open Buzz plugins from public Git repositories and add them to Buzz.",
+  "discovery": {
+    "category": "productivity",
+    "tags": [
+      "Plugins",
+      "Community"
+    ]
+  },
+  "host": {
+    "networkOrigins": [
+      "https://api.github.com",
+      "https://raw.githubusercontent.com"
+    ]
+  }
+}
