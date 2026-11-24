@@ -78,11 +78,13 @@ Each crawled commit gets an audit:
   - `size`: `plugin.js` over 3 MiB.
 - `accessChanged`: true when the declared access differs from the previous index's pin for the same key.
 
-A listing whose tier is `high`, or that has any flag, gets `audit.cleared: false` unless its key appears in `cleared.txt` or `verified.txt` with that commit (a maintainer clearing or reviewing it). Uncleared listings stay in the index; the marketplace says nobody has cleared that version.
+A listing whose tier is `high`, or that has any flag, gets `audit.cleared: false` unless its key appears in `cleared.txt` with that commit (a maintainer clearing it). `verified.txt` doesn't clear a listing. Uncleared listings stay in the index; the marketplace says nobody has cleared that version.
 
 ## Verified
 
 `verified.txt` holds `<key> <commit>` pairs, in the same form as `cleared.txt`. A listing gets `verified: true` only when the commit the crawl resolved is paired with its key there (keys and commits compare case-insensitively). A source that moves to a new commit is `verified: false` again until that commit is added. Lines for other commits are ignored and stay as history.
+
+A verified listing carries only what its commit pins: `demo` media whose URL is on `raw.githubusercontent.com` at that commit, and `links.repository`. Other media and `links.docs`/`links.support` are dropped from the entry, since they can change after the review. Its `audit` is the same as it would be unverified.
 
 `verified` is about a review and `official` is about the owner; neither implies the other. [`VERIFICATION.md`](./VERIFICATION.md) is the review process.
 

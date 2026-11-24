@@ -6,6 +6,8 @@ Anyone can list a plugin, and a listing starts out unreviewed. A listing is **Ve
 
 - A maintainer read the source at that commit, confirmed the committed `plugin.js` is built from it, and found that the plugin does what its listing says with the access it declares.
 - It covers one commit. When the author pushes a new one, the listing goes back to unreviewed until that commit is reviewed. Listing a tag in `sources.txt` instead of a branch keeps the badge between releases.
+- It covers what that commit pins. A verified listing shows only screenshots, posters and video served from the reviewed commit, and only its repository link. The directory drops media hosted anywhere else and the author's docs and support links from a verified listing, because those can change after the review. Keep demo media in the repository if it should show.
+- It does not hide anything. A verified listing still shows its access tier and every flag from the automated scan, and whether a maintainer cleared them.
 - It is not a guarantee. Plugins run unsandboxed, and a review can miss things. Buzz's own install review, which shows the requested access and the exact commit, still runs before anything is added.
 
 ## Asking for a review
@@ -33,9 +35,9 @@ The reviewer opens a pull request that adds one line to [`verified.txt`](./verif
 <key> <commit>
 ```
 
-A second maintainer approves and merges. The listing shows as verified after the next index publish. The pull request and its issue are the record of who reviewed what; earlier lines stay in the file as history.
+The pull request merges under the same rule as any other change to `main`: an approving review from a code owner. When the reviewer is the only code owner, the issue's checklist is the record that the review happened. The listing shows as verified after the next index publish. The pull request and its issue are the record of who reviewed what; earlier lines stay in the file as history.
 
-A verified commit doesn't also need a line in `cleared.txt`.
+Verifying doesn't clear the audit. If the listing is high access or has any flag, add the same line to [`cleared.txt`](./cleared.txt) in the same pull request, once step 5 is satisfied. Otherwise it stays marked as not yet cleared.
 
 ## Withdrawing
 
