@@ -3,6 +3,7 @@
   "name": "Community Marketplace",
   "apiVersion": 1,
   "description": "Browse open Buzz plugins from public Git repositories and add them to Buzz.",
+  "updates": { "defaultEnabled": true },
   "discovery": {
     "category": "productivity",
     "tags": ["Plugins", "Community"]
