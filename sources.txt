@@ -3,3 +3,4 @@ https://github.com/block/buzz-app main examples/plugins/counter
 https://github.com/block/buzz-app main examples/plugins/notes
 https://github.com/block/buzz-app main examples/plugins/shortcut-counter
 https://github.com/panosdigital/buzz-plugin-codex-with-mcp main
+https://github.com/willemave/buzz-antigravity-plugin main
